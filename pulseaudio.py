@@ -84,7 +84,36 @@ class PulseAudio:
         self._block_operation(operation)
         return info
 
+    def play(self, data, samplerate, name="outputstream"):
+        samplespec = ffi.new("pa_sample_spec*")
+        samplespec.format = pa.PA_SAMPLE_FLOAT32LE
+        samplespec.rate = samplerate
+        samplespec.channels = 2
+        if not pa.pa_sample_spec_valid(samplespec):
+            raise RuntimeException('invalid sample spec')
+        stream = pa.pa_stream_new(self.context, name.encode(), samplespec, ffi.NULL)
+        bufattr = ffi.new("pa_buffer_attr*")
+        bufattr.maxlength = 2**32-1 # max buffer length
+        bufattr.fragsize = 2**32-1 # block size
+        bufattr.minreq = 2**32-1 # start requesting more data at this bytes
+        bufattr.prebuf = 2**32-1 # start playback after this bytes are available
+        bufattr.tlength = 2**32-1 # buffer length in bytes on server
+        pa.pa_stream_connect_playback(stream, self.get_server_info()['default sink id'].encode(),
+                                      bufattr, pa.PA_STREAM_NOFLAGS, ffi.NULL, ffi.NULL)
+        while pa.pa_stream_get_state(stream) == pa.PA_STREAM_CREATING:
+            time.sleep(0.01)
+        if pa.pa_stream_get_state(stream) != pa.PA_STREAM_READY:
+            raise RuntimeError('Stream creation failed. Stream is in status {}'.format(pa.pa_stream_get_state(stream)))
+        data = numpy.array(data, dtype='float32')
+        bytes = data.ravel().tostring()
+        pa.pa_stream_write(stream, bytes, len(bytes), ffi.NULL, 0, pa.PA_SEEK_RELATIVE)
+        operation = pa.pa_stream_drain(stream, ffi.NULL, ffi.NULL)
+        self._block_operation(operation)
+        pa.pa_stream_unref(stream)
+
 with PulseAudio() as p:
     print(p.get_source_info_list())
     print(p.get_sink_info_list())
     print(p.get_server_info())
+    data = numpy.sin(numpy.linspace(0, 2*numpy.pi*100, 44100))
+    p.play(data, 44100)

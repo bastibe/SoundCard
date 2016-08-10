@@ -311,3 +311,56 @@ typedef struct pa_server_info {
 } pa_server_info;
 typedef void (*pa_server_info_cb_t) (pa_context *c, const pa_server_info*i, void *userdata);
 pa_operation* pa_context_get_server_info(pa_context *c, pa_server_info_cb_t cb, void *userdata);
+
+int pa_sample_spec_valid(const pa_sample_spec *spec);
+
+typedef struct pa_stream pa_stream;
+pa_stream* pa_stream_new(pa_context *c, const char *name, const pa_sample_spec *ss, const pa_channel_map *map);
+void pa_stream_unref(pa_stream *s);
+
+typedef enum pa_stream_flags {
+    PA_STREAM_NOFLAGS = 0x0000,
+    PA_STREAM_START_CORKED = 0x0001,
+    PA_STREAM_INTERPOLATE_TIMING = 0x0002,
+    PA_STREAM_NOT_MONOTONIC = 0x0004,
+    PA_STREAM_AUTO_TIMING_UPDATE = 0x0008,
+    PA_STREAM_NO_REMAP_CHANNELS = 0x0010,
+    PA_STREAM_NO_REMIX_CHANNELS = 0x0020,
+    PA_STREAM_FIX_FORMAT = 0x0040,
+    PA_STREAM_FIX_RATE = 0x0080,
+    PA_STREAM_FIX_CHANNELS = 0x0100,
+    PA_STREAM_DONT_MOVE = 0x0200,
+    PA_STREAM_VARIABLE_RATE = 0x0400,
+    PA_STREAM_PEAK_DETECT = 0x0800,
+    PA_STREAM_START_MUTED = 0x1000,
+    PA_STREAM_ADJUST_LATENCY = 0x2000,
+    PA_STREAM_EARLY_REQUESTS = 0x4000,
+    PA_STREAM_DONT_INHIBIT_AUTO_SUSPEND = 0x8000,
+    PA_STREAM_START_UNMUTED = 0x10000,
+    PA_STREAM_FAIL_ON_SUSPEND = 0x20000,
+    PA_STREAM_RELATIVE_VOLUME = 0x40000,
+    PA_STREAM_PASSTHROUGH = 0x80000
+} pa_stream_flags_t;
+int pa_stream_connect_playback(pa_stream *s, const char *dev, const pa_buffer_attr *attr, pa_stream_flags_t flags, const pa_cvolume *volume, pa_stream *sync_stream);
+int pa_stream_disconnect(pa_stream *s);
+typedef void (*pa_stream_success_cb_t) (pa_stream*s, int success, void *userdata);
+pa_operation* pa_stream_cork(pa_stream *s, int b, pa_stream_success_cb_t cb, void *userdata);
+pa_operation* pa_stream_drain(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
+size_t pa_stream_writable_size(pa_stream *p);
+typedef void (*pa_free_cb_t)(void *p);
+typedef enum pa_seek_mode {
+    PA_SEEK_RELATIVE = 0,
+    PA_SEEK_ABSOLUTE = 1,
+    PA_SEEK_RELATIVE_ON_READ = 2,
+    PA_SEEK_RELATIVE_END = 3
+} pa_seek_mode_t;
+int pa_stream_write(pa_stream *p, const void *data, size_t nbytes, pa_free_cb_t free_cb, int64_t offset, pa_seek_mode_t seek);
+
+typedef enum pa_stream_state {
+    PA_STREAM_UNCONNECTED,
+    PA_STREAM_CREATING,
+    PA_STREAM_READY,
+    PA_STREAM_FAILED,
+    PA_STREAM_TERMINATED
+} pa_stream_state_t;
+pa_stream_state_t pa_stream_get_state(pa_stream *p);
