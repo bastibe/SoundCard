@@ -297,3 +297,17 @@ typedef void (*pa_sink_info_cb_t)(pa_context *c, const pa_sink_info *i, int eol,
 pa_operation* pa_context_get_sink_info_list(pa_context *c, pa_sink_info_cb_t cb, void *userdata);
 typedef void (*pa_source_info_cb_t)(pa_context *c, const pa_source_info *i, int eol, void *userdata);
 pa_operation* pa_context_get_source_info_list(pa_context *c, pa_source_info_cb_t cb, void *userdata);
+
+typedef struct pa_server_info {
+    const char *user_name;
+    const char *host_name;
+    const char *server_version;
+    const char *server_name;
+    pa_sample_spec sample_spec;
+    const char *default_sink_name;
+    const char *default_source_name;
+    uint32_t cookie;
+    pa_channel_map channel_map;
+} pa_server_info;
+typedef void (*pa_server_info_cb_t) (pa_context *c, const pa_server_info*i, void *userdata);
+pa_operation* pa_context_get_server_info(pa_context *c, pa_server_info_cb_t cb, void *userdata);

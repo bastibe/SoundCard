@@ -41,6 +41,11 @@ class PulseAudio:
         pa.pa_context_unref(self.context)
         pa.pa_mainloop_free(self.mainloop)
 
+    def _block_operation(self, operation):
+        while pa.pa_operation_get_state(operation) == pa.PA_OPERATION_RUNNING:
+            time.sleep(0.001)
+        pa.pa_operation_unref(operation)
+
     def get_source_info_list(self):
         info = []
         @ffi.callback("pa_source_info_cb_t")
@@ -48,11 +53,10 @@ class PulseAudio:
             if not eol:
                 info.append(dict(index=source_info.index,
                                  description=ffi.string(source_info.description).decode('utf-8'),
-                                 latency=source_info.configured_latency))
+                                 latency=source_info.configured_latency,
+                                 id=ffi.string(source_info.name).decode('utf-8')))
         operation = pa.pa_context_get_source_info_list(self.context, callback, ffi.NULL)
-        while pa.pa_operation_get_state(operation) == pa.PA_OPERATION_RUNNING:
-            time.sleep(0.001)
-        pa.pa_operation_unref(operation)
+        self._block_operation(operation)
         return info
 
     def get_sink_info_list(self):
@@ -62,13 +66,25 @@ class PulseAudio:
             if not eol:
                 info.append((dict(index=source_info.index,
                                   name=ffi.string(source_info.description).decode('utf-8'),
-                                  latency=source_info.configured_latency)))
+                                  latency=source_info.configured_latency,
+                                  id=ffi.string(source_info.name).decode('utf-8'))))
         operation = pa.pa_context_get_sink_info_list(self.context, callback, ffi.NULL)
-        while pa.pa_operation_get_state(operation) == pa.PA_OPERATION_RUNNING:
-            time.sleep(0.01)
-        pa.pa_operation_unref(operation)
+        self._block_operation(operation)
+        return info
+
+    def get_server_info(self):
+        info = {}
+        @ffi.callback("pa_server_info_cb_t")
+        def callback(context, server_info, userdata):
+            info['server version'] = ffi.string(server_info.server_version).decode('utf-8')
+            info['server name'] = ffi.string(server_info.server_name).decode('utf-8')
+            info['default sink id'] = ffi.string(server_info.default_sink_name).decode('utf-8')
+            info['default source id'] = ffi.string(server_info.default_source_name).decode('utf-8')
+        operation = pa.pa_context_get_server_info(self.context, callback, ffi.NULL)
+        self._block_operation(operation)
         return info
 
 with PulseAudio() as p:
     print(p.get_source_info_list())
     print(p.get_sink_info_list())
+    print(p.get_server_info())
