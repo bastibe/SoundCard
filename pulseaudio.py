@@ -1,4 +1,3 @@
-import numpy
 from cffi import FFI
 
 ffi = FFI()
@@ -8,19 +7,174 @@ with open('pulseaudio.py.h', 'rt') as f:
 pa = ffi.dlopen('pulse')
 
 import time
-from threading import Thread
+import threading
+import re
+import numpy
 
-class AudioThread(Thread):
-    def __init__(self, mainloop):
-        super(AudioThread, self).__init__()
-        self.mainloop = mainloop
-    def run(self):
-        self.retval = ffi.new('int*', 0)
-        pa.pa_mainloop_run(self.mainloop, self.retval)
-    def stop(self):
-        pa.pa_mainloop_quit(self.mainloop, self.retval[0])
 
-class PulseAudio:
+def all_speakers():
+    """A list of all known speakers."""
+    with _PulseAudio() as p:
+        return [_Speaker(id=s['id']) for s in p.get_sink_info_list()]
+
+
+def default_speaker():
+    """The default speaker of the system."""
+    with _PulseAudio() as p:
+        name = p.get_server_info()['default sink id']
+        return get_speaker(name)
+
+
+def get_speaker(id):
+    """Get a specific speaker by a variety of means.
+
+    id can be an int index, a pulseaudio id, a substring of the
+    speaker name, or a fuzzy-matched pattern for the speaker name.
+
+    """
+    with _PulseAudio() as p:
+        speakers = p.get_sink_info_list()
+    return _Speaker(id=_match_soundcard(id, speakers)['id'])
+
+
+def all_microphones():
+    """A list of all connected microphones."""
+    with _PulseAudio() as p:
+        return [Microphone(id=m['id']) for m in p.get_source_info_list()]
+
+
+def default_microphone():
+    """The default microphone of the system."""
+    with _PulseAudio() as p:
+        name = p.get_server_info()['default source id']
+        return get_microphone(name)
+
+
+def get_microphone(id):
+    """Get a specific microphone by a variety of means.
+
+    id can be an int index, a pulseaudio id, a substring of the
+    microphone name, or a fuzzy-matched pattern for the microphone
+    name.
+
+    """
+    with _PulseAudio() as p:
+        microphones = p.get_source_info_list()
+    return Microphone(id=_match_soundcard(id, microphones)['id'])
+
+
+def _match_soundcard(id, soundcards):
+    """Find id in a list of soundcards.
+
+    id can be an int index, a pulseaudio id, a substring of the
+    microphone name, or a fuzzy-matched pattern for the microphone
+    name.
+
+    """
+    soundcards_by_index = {soundcard['index']: soundcard for soundcard in soundcards}
+    soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
+    soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
+    if isinstance(id, int):
+        if id in soundcards_by_index:
+            return soundcards_by_index[id]
+        else:
+            raise IndexError('no soundcard with id {}'.format(id))
+    elif isinstance(id, str):
+        if id in soundcards_by_id:
+            return soundcards_by_id[id]
+        # try substring match:
+        for name, soundcard in soundcards_by_name.items():
+            if id in name:
+                return soundcard
+        # try fuzzy match:
+        pattern = '.*'.join(id)
+        for name, soundcard in soundcards_by_name.items():
+            if re.match(pattern, name):
+                return soundcard
+        raise IndexError('no soundcard with id {}'.format(id))
+
+
+class _Speaker:
+    """A soundcard output. Can be used to play audio."""
+
+    def __init__(self, *, id):
+        self._id = id
+
+    def __repr__(self):
+        return '<Speaker {}>'.format(self._id)
+
+    def player(self, samplerate):
+        return _Player(self._id, samplerate)
+
+    def play(self, data, samplerate):
+        with _Player(self._id, samplerate) as s:
+            s.play(data)
+
+
+class _Player:
+    """A sound player."""
+
+    def __init__(self, id, samplerate, name='outputstream'):
+        self._id = id
+        self._samplerate = samplerate
+        self._name = name
+
+    def __enter__(self):
+        self._pulse = _PulseAudio()
+        self._pulse.__enter__()
+        samplespec = ffi.new("pa_sample_spec*")
+        samplespec.format = pa.PA_SAMPLE_FLOAT32LE
+        samplespec.rate = self._samplerate
+        samplespec.channels = 2
+        if not pa.pa_sample_spec_valid(samplespec):
+            raise RuntimeException('invalid sample spec')
+        self.stream = pa.pa_stream_new(self._pulse.context, self._name.encode(), samplespec, ffi.NULL)
+        bufattr = ffi.new("pa_buffer_attr*")
+        bufattr.maxlength = 2**32-1 # max buffer length
+        bufattr.fragsize = 2**32-1 # block size
+        bufattr.minreq = 2**32-1 # start requesting more data at this bytes
+        bufattr.prebuf = 2**32-1 # start playback after this bytes are available
+        bufattr.tlength = 2**32-1 # buffer length in bytes on server
+        pa.pa_stream_connect_playback(self.stream, self._id.encode(),
+                                      bufattr, pa.PA_STREAM_NOFLAGS, ffi.NULL, ffi.NULL)
+        while pa.pa_stream_get_state(self.stream) == pa.PA_STREAM_CREATING:
+            time.sleep(0.01)
+        if pa.pa_stream_get_state(self.stream) != pa.PA_STREAM_READY:
+            raise RuntimeError('Stream creation failed. Stream is in status {}'.format(pa.pa_stream_get_state(self.stream)))
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        operation = pa.pa_stream_drain(self.stream, ffi.NULL, ffi.NULL)
+        self._pulse._block_operation(operation)
+        pa.pa_stream_unref(self.stream)
+        self._pulse.__exit__(exc_type, exc_value, traceback)
+        self._pulse = None
+
+    def play(self, data):
+        data = numpy.array(data, dtype='float32')
+        bytes = data.ravel().tostring()
+        pa.pa_stream_write(self.stream, bytes, len(bytes), ffi.NULL, 0, pa.PA_SEEK_RELATIVE)
+
+
+class Microphone:
+    """A soundcard input. Can be used to record audio."""
+
+    def __init__(self, *, id):
+        self._id = id
+
+    def __repr__(self):
+        return '<Microphone {}>'.format(self._id)
+
+    def recorder(self, samplerate):
+        raise NotImplementedError()
+
+    def record(self, samplerate):
+        raise NotImplementedError()
+
+
+class _PulseAudio:
+    """Communcation with Pulseaudio."""
+
     def __init__(self):
         self.mainloop = pa.pa_mainloop_new()
         self.mainloop_api = pa.pa_mainloop_get_api(self.mainloop)
@@ -52,7 +206,7 @@ class PulseAudio:
         def callback(context, source_info, eol, userdata):
             if not eol:
                 info.append(dict(index=source_info.index,
-                                 description=ffi.string(source_info.description).decode('utf-8'),
+                                 name=ffi.string(source_info.description).decode('utf-8'),
                                  latency=source_info.configured_latency,
                                  id=ffi.string(source_info.name).decode('utf-8')))
         operation = pa.pa_context_get_source_info_list(self.context, callback, ffi.NULL)
@@ -84,36 +238,33 @@ class PulseAudio:
         self._block_operation(operation)
         return info
 
-    def play(self, data, samplerate, name="outputstream"):
-        samplespec = ffi.new("pa_sample_spec*")
-        samplespec.format = pa.PA_SAMPLE_FLOAT32LE
-        samplespec.rate = samplerate
-        samplespec.channels = 2
-        if not pa.pa_sample_spec_valid(samplespec):
-            raise RuntimeException('invalid sample spec')
-        stream = pa.pa_stream_new(self.context, name.encode(), samplespec, ffi.NULL)
-        bufattr = ffi.new("pa_buffer_attr*")
-        bufattr.maxlength = 2**32-1 # max buffer length
-        bufattr.fragsize = 2**32-1 # block size
-        bufattr.minreq = 2**32-1 # start requesting more data at this bytes
-        bufattr.prebuf = 2**32-1 # start playback after this bytes are available
-        bufattr.tlength = 2**32-1 # buffer length in bytes on server
-        pa.pa_stream_connect_playback(stream, self.get_server_info()['default sink id'].encode(),
-                                      bufattr, pa.PA_STREAM_NOFLAGS, ffi.NULL, ffi.NULL)
-        while pa.pa_stream_get_state(stream) == pa.PA_STREAM_CREATING:
-            time.sleep(0.01)
-        if pa.pa_stream_get_state(stream) != pa.PA_STREAM_READY:
-            raise RuntimeError('Stream creation failed. Stream is in status {}'.format(pa.pa_stream_get_state(stream)))
-        data = numpy.array(data, dtype='float32')
-        bytes = data.ravel().tostring()
-        pa.pa_stream_write(stream, bytes, len(bytes), ffi.NULL, 0, pa.PA_SEEK_RELATIVE)
-        operation = pa.pa_stream_drain(stream, ffi.NULL, ffi.NULL)
-        self._block_operation(operation)
-        pa.pa_stream_unref(stream)
 
-with PulseAudio() as p:
-    print(p.get_source_info_list())
-    print(p.get_sink_info_list())
-    print(p.get_server_info())
+class AudioThread(threading.Thread):
+    """Helper class for pulseaudio's main loop."""
+
+    def __init__(self, mainloop):
+        super(AudioThread, self).__init__()
+        self.mainloop = mainloop
+
+    def run(self):
+        self.retval = ffi.new('int*', 0)
+        pa.pa_mainloop_run(self.mainloop, self.retval)
+
+    def stop(self):
+        pa.pa_mainloop_quit(self.mainloop, self.retval[0])
+
+
+if __name__ == '__main__':
+    print('Speakers:')
+    print(all_speakers())
+    print('Default Speaker:')
+    print(default_speaker())
+    print('Microphones:')
+    print(all_microphones())
+    print('Default Microphone:')
+    print(default_microphone())
     data = numpy.sin(numpy.linspace(0, 2*numpy.pi*100, 44100))
-    p.play(data, 44100)
+    default_speaker().play(data, 44100)
+    with default_speaker().player(44100) as s:
+        s.play(data)
+        s.play(data)
