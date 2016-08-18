@@ -111,13 +111,15 @@ class _Speaker:
             s.play(data)
 
 
-class _Player:
-    """A sound player."""
+class _Stream:
+    """An audio stream."""
 
-    def __init__(self, id, samplerate, name='outputstream'):
+    def __init__(self, id, samplerate, type, name='outputstream'):
         self._id = id
         self._samplerate = samplerate
         self._name = name
+        self._type = type
+        self.channels = None
 
     def __enter__(self):
         self._pulse = _PulseAudio()
@@ -135,23 +137,43 @@ class _Player:
         bufattr.minreq = 2**32-1 # start requesting more data at this bytes
         bufattr.prebuf = 2**32-1 # start playback after this bytes are available
         bufattr.tlength = 2**32-1 # buffer length in bytes on server
-        pa.pa_stream_connect_playback(self.stream, self._id.encode(),
-                                      bufattr, pa.PA_STREAM_NOFLAGS, ffi.NULL, ffi.NULL)
+        if self._type == 'output':
+            pa.pa_stream_connect_playback(self.stream, self._id.encode(),
+                                          bufattr, pa.PA_STREAM_NOFLAGS, ffi.NULL, ffi.NULL)
+        elif self._type == 'input':
+            pa.pa_stream_connect_record(self.stream, self._id.encode(), bufattr, pa.PA_STREAM_NOFLAGS)
         while pa.pa_stream_get_state(self.stream) == pa.PA_STREAM_CREATING:
             time.sleep(0.01)
         if pa.pa_stream_get_state(self.stream) != pa.PA_STREAM_READY:
             raise RuntimeError('Stream creation failed. Stream is in status {}'.format(pa.pa_stream_get_state(self.stream)))
+        channel_map = pa.pa_stream_get_channel_map(self.stream)
+        self.channels = int(channel_map.channels)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.channels = None
         operation = pa.pa_stream_drain(self.stream, ffi.NULL, ffi.NULL)
         self._pulse._block_operation(operation)
         pa.pa_stream_unref(self.stream)
         self._pulse.__exit__(exc_type, exc_value, traceback)
         self._pulse = None
 
+
+class _Player(_Stream):
+
+    def __init__(self, id, samplerate, name='outputstream'):
+        super(_Player, self).__init__(id, samplerate, 'output', name)
+
     def play(self, data):
         data = numpy.array(data, dtype='float32')
+        if data.ndim == 1:
+            data = data[:, None] # force 2d
+        if data.ndim != 2:
+            raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
+        if data.shape[1] == 1 and self.channels != 1:
+            data = numpy.tile(data, [1, self.channels])
+        if data.shape[1] != self.channels:
+            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         bytes = data.ravel().tostring()
         pa.pa_stream_write(self.stream, bytes, len(bytes), ffi.NULL, 0, pa.PA_SEEK_RELATIVE)
 
@@ -166,10 +188,33 @@ class Microphone:
         return '<Microphone {}>'.format(self._id)
 
     def recorder(self, samplerate):
-        raise NotImplementedError()
+        return _Recorder(self._id, samplerate)
 
-    def record(self, samplerate):
-        raise NotImplementedError()
+    def record(self, samplerate, length):
+        with _Recorder(self._id, samplerate) as r:
+            return r.record(length)
+
+
+class _Recorder(_Stream):
+
+    def __init__(self, id, samplerate, name='outputstream'):
+        super(_Recorder, self).__init__(id, samplerate, 'input', name)
+
+    def record(self, num_frames):
+        captured_frames = 0
+        captured_data = []
+        data_ptr = ffi.new('void**')
+        nbytes_ptr = ffi.new('size_t*')
+        while captured_frames < num_frames:
+            if pa.pa_stream_readable_size(self.stream) > 0:
+                pa.pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
+                chunk = numpy.fromstring(ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+                pa.pa_stream_drop(self.stream)
+                captured_data.append(chunk)
+                captured_frames += len(chunk)/self.channels
+            else:
+                time.sleep(0.01)
+        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
 
 class _PulseAudio:
@@ -196,6 +241,8 @@ class _PulseAudio:
         pa.pa_mainloop_free(self.mainloop)
 
     def _block_operation(self, operation):
+        if operation == ffi.NULL:
+            return
         while pa.pa_operation_get_state(operation) == pa.PA_OPERATION_RUNNING:
             time.sleep(0.001)
         pa.pa_operation_unref(operation)
@@ -265,6 +312,12 @@ if __name__ == '__main__':
     print(default_microphone())
     data = numpy.sin(numpy.linspace(0, 2*numpy.pi*100, 44100))
     default_speaker().play(data, 44100)
-    with default_speaker().player(44100) as s:
-        s.play(data)
-        s.play(data)
+    # with default_speaker().player(44100) as s:
+    #     s.play(data)
+    #     s.play(data)
+    data = default_microphone().record(44100, 44100)
+    print(len(data))
+    default_speaker().play(data/numpy.max(data), 44100)
+    # import matplotlib.pyplot as plt
+    # plt.plot(numpy.linspace(0, len(data)/44100, len(data)), data)
+    # plt.show()

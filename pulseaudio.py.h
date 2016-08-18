@@ -342,11 +342,13 @@ typedef enum pa_stream_flags {
     PA_STREAM_PASSTHROUGH = 0x80000
 } pa_stream_flags_t;
 int pa_stream_connect_playback(pa_stream *s, const char *dev, const pa_buffer_attr *attr, pa_stream_flags_t flags, const pa_cvolume *volume, pa_stream *sync_stream);
+int pa_stream_connect_record(pa_stream *s, const char *dev, const pa_buffer_attr *attr, pa_stream_flags_t flags);
 int pa_stream_disconnect(pa_stream *s);
 typedef void (*pa_stream_success_cb_t) (pa_stream*s, int success, void *userdata);
 pa_operation* pa_stream_cork(pa_stream *s, int b, pa_stream_success_cb_t cb, void *userdata);
 pa_operation* pa_stream_drain(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
 size_t pa_stream_writable_size(pa_stream *p);
+size_t pa_stream_readable_size(pa_stream *p);
 typedef void (*pa_free_cb_t)(void *p);
 typedef enum pa_seek_mode {
     PA_SEEK_RELATIVE = 0,
@@ -355,6 +357,9 @@ typedef enum pa_seek_mode {
     PA_SEEK_RELATIVE_END = 3
 } pa_seek_mode_t;
 int pa_stream_write(pa_stream *p, const void *data, size_t nbytes, pa_free_cb_t free_cb, int64_t offset, pa_seek_mode_t seek);
+int pa_stream_peek(pa_stream *p, const void **data, size_t *nbytes);
+int pa_stream_drop(pa_stream *p);
+const pa_channel_map* pa_stream_get_channel_map(pa_stream *s);
 
 typedef enum pa_stream_state {
     PA_STREAM_UNCONNECTED,
