@@ -23,7 +23,7 @@ one_speker = pa.get_speaker('FS2i2')
 one_mic = pa.get_microphone('FS2i2')
 ```
 
-All of these functions return `Speaker` and `Microphone` objects, which can be used for playback and recording:
+All of these functions return `Speaker` and `Microphone` objects, which can be used for playback and recording. All data passed in and out of these objects are *frames × channels* Numpy arrays.
 
 ```python
 import numpy
