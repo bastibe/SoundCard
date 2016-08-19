@@ -338,29 +338,3 @@ class AudioThread(threading.Thread):
 
     def stop(self):
         pa.pa_mainloop_quit(self.mainloop, self.retval[0])
-
-
-if __name__ == '__main__':
-    print('Speakers:')
-    print(all_speakers())
-    print('Default Speaker:')
-    print(default_speaker())
-    print('Microphones:')
-    print(all_microphones())
-    print('Default Microphone:')
-    print(default_microphone())
-    # direct mode:
-    data = default_microphone().record(44100, 44100)
-    default_speaker().play(data/numpy.max(data), 44100)
-    # context manager mode with adjusted blocksize:
-    bl = 2048
-    with default_microphone().recorder(44100, blocksize=bl) as r, default_speaker().player(44100, blocksize=bl) as s:
-        lengths = []
-        length = 0
-        while length < 44100*3:
-            data1 = r.record(1)
-            lengths.append(len(data1))
-            length += len(data1)
-            s.play(data1/numpy.max(data))
-
-    print(numpy.mean(lengths))
