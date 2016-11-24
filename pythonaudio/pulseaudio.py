@@ -175,7 +175,7 @@ class _Stream:
         self.stream = _pa.pa_stream_new(self._pulse.context, self._name.encode(), samplespec, _ffi.NULL)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
-        bufattr.fragsize = 2**32-1 # recording block size
+        bufattr.fragsize = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # recording block size
         bufattr.minreq = 2**32-1 # start requesting more data at this bytes
         bufattr.prebuf = 2**32-1 # start playback after this bytes are available
         bufattr.tlength = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
@@ -189,18 +189,22 @@ class _Stream:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        # first stop thread, so that it doesn't reference dead objects any more:
+        self._pulse.__exit__(exc_type, exc_value, traceback)
         operation = _pa.pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
         self._pulse._block_operation(operation)
-        _pa.pa_stream_unref(self.stream)
-        self._pulse.__exit__(exc_type, exc_value, traceback)
-        self._pulse = None
+        _pa.pa_stream_disconnect(self.stream)
+        while _pa.pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
+            time.sleep(0.01)
+        # I *think* I should unref the stream here, but this leads to crashes.
+        # _pa.pa_stream_unref(self.stream)
 
 
 class _Player(_Stream):
 
     def _connect_stream(self, bufattr):
         _pa.pa_stream_connect_playback(self.stream, self._id.encode(),
-                                      bufattr, _pa.PA_STREAM_ADJUST_LATENCY, _ffi.NULL, _ffi.NULL)
+                                       bufattr, _pa.PA_STREAM_ADJUST_LATENCY, _ffi.NULL, _ffi.NULL)
 
     def play(self, data):
         data = numpy.array(data, dtype='float32')
@@ -212,8 +216,16 @@ class _Player(_Stream):
             data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
-        bytes = data.ravel().tostring()
-        _pa.pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
+
+        bufattr = _pa.pa_stream_get_buffer_attr(self.stream)
+        while data.nbytes > 0:
+            nwrite = _pa.pa_stream_writable_size(self.stream) // 4
+            if nwrite == 0:
+                time.sleep(0.001)
+                continue
+            bytes = data[:nwrite].ravel().tostring()
+            _pa.pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
+            data = data[nwrite:]
 
 
 class _Recorder(_Stream):
@@ -228,13 +240,19 @@ class _Recorder(_Stream):
         nbytes_ptr = _ffi.new('size_t*')
         while captured_frames < num_frames:
             if _pa.pa_stream_readable_size(self.stream) > 0:
+                data_ptr[0] = _ffi.NULL
+                nbytes_ptr[0] = 0
                 _pa.pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
-                chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
-                _pa.pa_stream_drop(self.stream)
-                captured_data.append(chunk)
-                captured_frames += len(chunk)/self.channels
+                if data_ptr[0] != _ffi.NULL:
+                    chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+                if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
+                    chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+                if nbytes_ptr[0] > 0:
+                    _pa.pa_stream_drop(self.stream)
+                    captured_data.append(chunk)
+                    captured_frames += len(chunk)/self.channels
             else:
-                time.sleep(0.01)
+                time.sleep(0.001)
         return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
 
@@ -257,6 +275,8 @@ class _PulseAudio:
     def __exit__(self, exc_type, exc_value, traceback):
         self.thread.stop()
         self.thread.join()
+        operation = _pa.pa_context_drain(self.context, _ffi.NULL, _ffi.NULL)
+        self._block_operation(operation)
         _pa.pa_context_disconnect(self.context)
         _pa.pa_context_unref(self.context)
         _pa.pa_mainloop_free(self.mainloop)

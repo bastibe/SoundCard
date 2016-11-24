@@ -299,6 +299,8 @@ pa_operation* pa_context_get_sink_info_by_name(pa_context *c, const char *name, 
 typedef void (*pa_source_info_cb_t)(pa_context *c, const pa_source_info *i, int eol, void *userdata);
 pa_operation* pa_context_get_source_info_list(pa_context *c, pa_source_info_cb_t cb, void *userdata);
 pa_operation* pa_context_get_source_info_by_name(pa_context *c, const char *name, pa_source_info_cb_t cb, void *userdata);
+typedef void (*pa_context_notify_cb)(pa_context *c, void *userdata);
+pa_operation *pa_context_drain(pa_context *c, pa_context_notify_cb cb, void *userdata);
 
 typedef struct pa_server_info {
     const char *user_name;
