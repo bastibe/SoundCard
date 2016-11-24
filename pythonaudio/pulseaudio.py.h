@@ -127,8 +127,17 @@ void pa_mainloop_free(pa_mainloop* m);
 int pa_mainloop_run(pa_mainloop *m, int *retval);
 void pa_mainloop_quit(pa_mainloop *m, int retval);
 
+typedef struct pa_threaded_mainloop pa_threaded_mainloop;
+pa_threaded_mainloop *pa_threaded_mainloop_new(void);
+int pa_threaded_mainloop_start(pa_threaded_mainloop *m);
+void pa_threaded_mainloop_stop(pa_threaded_mainloop *m);
+void pa_threaded_mainloop_free(pa_threaded_mainloop *m);
+void pa_threaded_mainloop_lock(pa_threaded_mainloop *m);
+void pa_threaded_mainloop_unlock(pa_threaded_mainloop *m);
+
 typedef struct pa_mainloop_api pa_mainloop_api;
 pa_mainloop_api* pa_mainloop_get_api(pa_mainloop*m);
+pa_mainloop_api *pa_threaded_mainloop_get_api(pa_threaded_mainloop *m);
 
 typedef struct pa_context pa_context;
 pa_context *pa_context_new(pa_mainloop_api *mainloop, const char *name);
@@ -364,6 +373,7 @@ int pa_stream_write(pa_stream *p, const void *data, size_t nbytes, pa_free_cb_t 
 int pa_stream_peek(pa_stream *p, const void **data, size_t *nbytes);
 int pa_stream_drop(pa_stream *p);
 const pa_channel_map* pa_stream_get_channel_map(pa_stream *s);
+const pa_buffer_attr* pa_stream_get_buffer_attr(pa_stream *s);
 
 typedef enum pa_stream_state {
     PA_STREAM_UNCONNECTED,

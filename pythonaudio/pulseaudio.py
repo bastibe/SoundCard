@@ -9,7 +9,6 @@ with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
 _pa = _ffi.dlopen('pulse')
 
 import time
-import threading
 import re
 import numpy
 
@@ -17,13 +16,13 @@ import numpy
 def all_speakers():
     """A list of all known speakers."""
     with _PulseAudio() as p:
-        return [_Speaker(id=s['id']) for s in p.get_sink_list()]
+        return [_Speaker(id=s['id']) for s in p.sink_list]
 
 
 def default_speaker():
     """The default speaker of the system."""
     with _PulseAudio() as p:
-        name = p.get_server_info()['default sink id']
+        name = p.server_info['default sink id']
         return get_speaker(name)
 
 
@@ -35,20 +34,20 @@ def get_speaker(id):
 
     """
     with _PulseAudio() as p:
-        speakers = p.get_sink_list()
+        speakers = p.sink_list
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
 
 
 def all_microphones():
     """A list of all connected microphones."""
     with _PulseAudio() as p:
-        return [_Microphone(id=m['id']) for m in p.get_source_list()]
+        return [_Microphone(id=m['id']) for m in p.source_list]
 
 
 def default_microphone():
     """The default microphone of the system."""
     with _PulseAudio() as p:
-        name = p.get_server_info()['default source id']
+        name = p.server_info['default source id']
         return get_microphone(name)
 
 
@@ -60,7 +59,7 @@ def get_microphone(id):
 
     """
     with _PulseAudio() as p:
-        microphones = p.get_source_list()
+        microphones = p.source_list
     return _Microphone(id=_match_soundcard(id, microphones)['id'])
 
 
@@ -110,7 +109,7 @@ class _Speaker:
 
     def _get_info(self):
         with _PulseAudio() as p:
-            return p.get_sink_info(self._id)
+            return p.sink_info(self._id)
 
     def player(self, samplerate, blocksize=None):
         return _Player(self._id, samplerate, self.channels, blocksize=blocksize)
@@ -143,7 +142,7 @@ class _Microphone:
 
     def _get_info(self):
         with _PulseAudio() as p:
-            return p.get_source_info(self._id)
+            return p.source_info(self._id)
 
     def recorder(self, samplerate, blocksize=None):
         return _Recorder(self._id, samplerate, self.channels, blocksize=blocksize)
@@ -163,6 +162,22 @@ class _Stream:
         self._blocksize = blocksize
         self.channels = channels
 
+    def _pa_stream_get_state(self, stream):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_get_state(stream)
+
+    def _pa_sample_spec_valid(self, samplespec):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_sample_spec_valid(samplespec)
+
+    def _pa_stream_new(self, context, name, samplespec, channelmap=_ffi.NULL):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_new(context, name, samplespec, channelmap)
+
+    def _pa_stream_get_channel_map(self, stream):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_get_channel_map(stream)
+
     def __enter__(self):
         self._pulse = _PulseAudio()
         self._pulse.__enter__()
@@ -170,9 +185,9 @@ class _Stream:
         samplespec.format = _pa.PA_SAMPLE_FLOAT32LE
         samplespec.rate = self._samplerate
         samplespec.channels = self.channels
-        if not _pa.pa_sample_spec_valid(samplespec):
+        if not self._pa_sample_spec_valid(samplespec):
             raise RuntimeException('invalid sample spec')
-        self.stream = _pa.pa_stream_new(self._pulse.context, self._name.encode(), samplespec, _ffi.NULL)
+        self.stream = self._pa_stream_new(self._pulse.context, self._name.encode(), samplespec)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
         bufattr.fragsize = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # recording block size
@@ -180,31 +195,56 @@ class _Stream:
         bufattr.prebuf = 2**32-1 # start playback after this bytes are available
         bufattr.tlength = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
         self._connect_stream(bufattr)
-        while _pa.pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
+        while self._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
-        if _pa.pa_stream_get_state(self.stream) == _pa.PA_STREAM_FAILED:
+        if self._pa_stream_get_state(self.stream) == _pa.PA_STREAM_FAILED:
             raise RuntimeError('Stream creation failed. Stream is in status {}'.format(_pa.pa_stream_get_state(self.stream)))
-        channel_map = _pa.pa_stream_get_channel_map(self.stream)
+        channel_map = self._pa_stream_get_channel_map(self.stream)
         self.channels = int(channel_map.channels)
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        # first stop thread, so that it doesn't reference dead objects any more:
-        self._pulse.__exit__(exc_type, exc_value, traceback)
-        operation = _pa.pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
+    def _pa_stream_drain(self, stream, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._pulse._lock_mainloop():
+            operation = _pa.pa_stream_drain(stream, callback, userdata)
         self._pulse._block_operation(operation)
-        _pa.pa_stream_disconnect(self.stream)
-        while _pa.pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
+
+    def _pa_stream_disconnect(self, stream):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_disconnect(stream)
+
+    def _pa_stream_unref(self, stream):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_unref(stream)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._pa_stream_drain(self.stream)
+        self._pa_stream_disconnect(self.stream)
+        while self._pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
             time.sleep(0.01)
-        # I *think* I should unref the stream here, but this leads to crashes.
-        # _pa.pa_stream_unref(self.stream)
+        self._pa_stream_unref(self.stream)
+        self._pulse.__exit__(exc_type, exc_value, traceback)
 
 
 class _Player(_Stream):
 
+    def _pa_stream_connect_playback(self, stream, id, bufattr, flags, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_connect_playback(stream, id, bufattr, flags, callback, userdata)
+
     def _connect_stream(self, bufattr):
-        _pa.pa_stream_connect_playback(self.stream, self._id.encode(),
-                                       bufattr, _pa.PA_STREAM_ADJUST_LATENCY, _ffi.NULL, _ffi.NULL)
+        self._pa_stream_connect_playback(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+
+    def _pa_stream_get_buffer_attr(self, stream):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_get_buffer_attr(stream)
+
+    def _pa_stream_writable_size(self, stream):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_writable_size(stream)
+
+    def _pa_stream_write(self, stream, data, nbytes, callback, offset, seekmode):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_write(stream, data, nbytes, callback, offset, seekmode)
 
     def play(self, data):
         data = numpy.array(data, dtype='float32')
@@ -216,22 +256,37 @@ class _Player(_Stream):
             data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
-
-        bufattr = _pa.pa_stream_get_buffer_attr(self.stream)
+        bufattr = self._pa_stream_get_buffer_attr(self.stream)
         while data.nbytes > 0:
-            nwrite = _pa.pa_stream_writable_size(self.stream) // 4
+            nwrite = self._pa_stream_writable_size(self.stream) // 4
             if nwrite == 0:
                 time.sleep(0.001)
                 continue
             bytes = data[:nwrite].ravel().tostring()
-            _pa.pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
+            self._pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
             data = data[nwrite:]
 
 
 class _Recorder(_Stream):
 
+    def _pa_stream_connect_record(self, stream, id, bufattr, flags):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_connect_record(stream, id, bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+
     def _connect_stream(self, bufattr):
-        _pa.pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+        self._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+
+    def _pa_stream_readable_size(self, stream):
+        with self._pulse._lock_mainloop():
+            return _pa.pa_stream_readable_size(stream)
+
+    def _pa_stream_peek(self, stream, dataptr, nbytesptr):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_peek(stream, dataptr, nbytesptr)
+
+    def _pa_stream_drop(self, stream):
+        with self._pulse._lock_mainloop():
+            _pa.pa_stream_drop(stream)
 
     def record(self, num_frames):
         captured_frames = 0
@@ -239,16 +294,17 @@ class _Recorder(_Stream):
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
         while captured_frames < num_frames:
-            if _pa.pa_stream_readable_size(self.stream) > 0:
+            readable_bytes = self._pa_stream_readable_size(self.stream)
+            if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
                 nbytes_ptr[0] = 0
-                _pa.pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
+                self._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
                 if data_ptr[0] != _ffi.NULL:
                     chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
                 if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
                     chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
                 if nbytes_ptr[0] > 0:
-                    _pa.pa_stream_drop(self.stream)
+                    self._pa_stream_drop(self.stream)
                     captured_data.append(chunk)
                     captured_frames += len(chunk)/self.channels
             else:
@@ -260,46 +316,78 @@ class _PulseAudio:
     """Communcation with Pulseaudio."""
 
     def __init__(self):
-        self.mainloop = _pa.pa_mainloop_new()
-        self.mainloop_api = _pa.pa_mainloop_get_api(self.mainloop)
+        self.mainloop = _pa.pa_threaded_mainloop_new()
+        self.mainloop_api = _pa.pa_threaded_mainloop_get_api(self.mainloop)
         self.context = _pa.pa_context_new(self.mainloop_api, b"audio")
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
-        self.thread = AudioThread(self.mainloop)
+
+    def _pa_context_get_state(self, context):
+        with self._lock_mainloop():
+            return _pa.pa_context_get_state(context)
 
     def __enter__(self):
-        self.thread.start()
-        while _pa.pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
+        _pa.pa_threaded_mainloop_start(self.mainloop)
+        while self._pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
             time.sleep(0.001)
         return self
 
+    def _pa_context_drain(self, context, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            return _pa.pa_context_drain(context, callback, userdata)
+
+    def _pa_context_disconnect(self, context):
+        with self._lock_mainloop():
+            _pa.pa_context_disconnect(context)
+
+    def _pa_context_unref(self, context):
+        with self._lock_mainloop():
+            _pa.pa_context_unref(context)
+
     def __exit__(self, exc_type, exc_value, traceback):
-        self.thread.stop()
-        self.thread.join()
-        operation = _pa.pa_context_drain(self.context, _ffi.NULL, _ffi.NULL)
+        operation = self._pa_context_drain(self.context)
         self._block_operation(operation)
-        _pa.pa_context_disconnect(self.context)
-        _pa.pa_context_unref(self.context)
-        _pa.pa_mainloop_free(self.mainloop)
+        self._pa_context_disconnect(self.context)
+        self._pa_context_unref(self.context)
+        _pa.pa_threaded_mainloop_stop(self.mainloop)
+        _pa.pa_threaded_mainloop_free(self.mainloop)
+
+    def _pa_operation_get_state(self, operation):
+        with self._lock_mainloop():
+            return _pa.pa_operation_get_state(operation)
+
+    def _pa_operation_unref(self, operation):
+        with self._lock_mainloop():
+            _pa.pa_operation_unref(operation)
 
     def _block_operation(self, operation):
         if operation == _ffi.NULL:
             return
-        while _pa.pa_operation_get_state(operation) == _pa.PA_OPERATION_RUNNING:
+        while self._pa_operation_get_state(operation) == _pa.PA_OPERATION_RUNNING:
             time.sleep(0.001)
-        _pa.pa_operation_unref(operation)
+        self._pa_operation_unref(operation)
 
-    def get_source_list(self):
+    def _pa_context_get_source_info_list(self, context, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            operation = _pa.pa_context_get_source_info_list(context, callback, userdata)
+        self._block_operation(operation)
+
+    @property
+    def source_list(self):
         info = []
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
                 info.append(dict(name=_ffi.string(source_info.description).decode('utf-8'),
                                  id=_ffi.string(source_info.name).decode('utf-8')))
-        operation = _pa.pa_context_get_source_info_list(self.context, callback, _ffi.NULL)
-        self._block_operation(operation)
+        self._pa_context_get_source_info_list(self.context, callback)
         return info
 
-    def get_source_info(self, id):
+    def _pa_context_get_source_info_by_name(self, context, id, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            operation = _pa.pa_context_get_source_info_by_name(context, id, callback, userdata)
+        self._block_operation(operation)
+
+    def source_info(self, id):
         info = []
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
@@ -307,22 +395,31 @@ class _PulseAudio:
                 info.append(dict(latency=source_info.latency,
                                  configured_latency=source_info.configured_latency,
                                  channels=source_info.sample_spec.channels))
-        operation = _pa.pa_context_get_source_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
-        self._block_operation(operation)
+        self._pa_context_get_source_info_by_name(self.context, id.encode(), callback)
         return info[0]
 
-    def get_sink_list(self):
+    def _pa_context_get_sink_info_list(self, context, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            operation = _pa.pa_context_get_sink_info_list(context, callback, userdata)
+        self._block_operation(operation)
+
+    @property
+    def sink_list(self):
         info = []
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
                 info.append((dict(name=_ffi.string(sink_info.description).decode('utf-8'),
                                   id=_ffi.string(sink_info.name).decode('utf-8'))))
-        operation = _pa.pa_context_get_sink_info_list(self.context, callback, _ffi.NULL)
-        self._block_operation(operation)
+        self._pa_context_get_sink_info_list(self.context, callback)
         return info
 
-    def get_sink_info(self, id):
+    def _pa_context_get_sink_info_by_name(self, context, id, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            operation = _pa.pa_context_get_sink_info_by_name(context, id, callback, userdata)
+        self._block_operation(operation)
+
+    def sink_info(self, id):
         info = []
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
@@ -330,11 +427,16 @@ class _PulseAudio:
                 info.append(dict(latency=sink_info.latency,
                                  configured_latency=sink_info.configured_latency,
                                  channels=sink_info.sample_spec.channels))
-        operation = _pa.pa_context_get_sink_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
-        self._block_operation(operation)
+        self._pa_context_get_sink_info_by_name(self.context, id.encode(), callback)
         return info[0]
 
-    def get_server_info(self):
+    def _pa_context_get_server_info(self, context, callback=_ffi.NULL, userdata=_ffi.NULL):
+        with self._lock_mainloop():
+            operation = _pa.pa_context_get_server_info(context, callback, userdata)
+        self._block_operation(operation)
+
+    @property
+    def server_info(self):
         info = {}
         @_ffi.callback("pa_server_info_cb_t")
         def callback(context, server_info, userdata):
@@ -342,21 +444,13 @@ class _PulseAudio:
             info['server name'] = _ffi.string(server_info.server_name).decode('utf-8')
             info['default sink id'] = _ffi.string(server_info.default_sink_name).decode('utf-8')
             info['default source id'] = _ffi.string(server_info.default_source_name).decode('utf-8')
-        operation = _pa.pa_context_get_server_info(self.context, callback, _ffi.NULL)
-        self._block_operation(operation)
+        self._pa_context_get_server_info(self.context, callback)
         return info
 
-
-class AudioThread(threading.Thread):
-    """Helper class for pulseaudio's main loop."""
-
-    def __init__(self, mainloop):
-        super(AudioThread, self).__init__()
-        self.mainloop = mainloop
-
-    def run(self):
-        self.retval = _ffi.new('int*', 0)
-        _pa.pa_mainloop_run(self.mainloop, self.retval)
-
-    def stop(self):
-        _pa.pa_mainloop_quit(self.mainloop, self.retval[0])
+    def _lock_mainloop(self):
+        class Lock():
+            def __enter__(self_):
+                _pa.pa_threaded_mainloop_lock(self.mainloop)
+            def __exit__(self_, exc_type, exc_value, traceback):
+                _pa.pa_threaded_mainloop_unlock(self.mainloop)
+        return Lock()
