@@ -1,6 +1,6 @@
 # Python-Audio
 
-Python-Audio is a library for playing and recording audio without resorting to a CPython extension. Instead, it is implemented using the wonderful [CFFI](http://cffi.readthedocs.io/en/latest/).
+Python-Audio is a library for playing and recording audio without resorting to a CPython extension. Instead, it is implemented using the wonderful [CFFI](http://cffi.readthedocs.io/en/latest/) and the native audio libraries of Linux, Windows and macOS.
 
 Python-Audio is meant to be cross-platform, but as of this moment, only a Linux/pulseaudio version has been implemented.
 

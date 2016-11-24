@@ -87,7 +87,19 @@ def _match_soundcard(id, soundcards):
 
 
 class _Speaker:
-    """A soundcard output. Can be used to play audio."""
+    """A soundcard output. Can be used to play audio.
+
+    Use the `play` method to play one piece of audio, or use the
+    `player` method to get a context manager for playing continuous
+    audio.
+
+    Properties:
+    - `channels`: the number of available channels
+    - `latency`: length of queued audio in the output buffer
+    - `configured_latency`: the expected latency of the sound card
+      if data is written as fast as it is played.
+
+    """
 
     def __init__(self, *, id):
         self._id = id
@@ -120,7 +132,19 @@ class _Speaker:
 
 
 class _Microphone:
-    """A soundcard input. Can be used to record audio."""
+    """A soundcard input. Can be used to record audio.
+
+    Use the `record` method to record a piece of audio, or use the
+    `recorder` method to get a context manager for recording
+    continuous audio.
+
+    Properties:
+    - `channels`: the number of available channels
+    - `latency`: length of queued audio in the input buffer
+    - `configured_latency`: the expected latency of the sound card
+      if data is read as fast as it is recorded.
+
+    """
 
     def __init__(self, *, id):
         self._id = id
@@ -153,7 +177,16 @@ class _Microphone:
 
 
 class _Stream:
-    """An audio stream."""
+    """A context manager for an active audio stream.
+
+    This class is meant to be subclassed. Children must implement the
+    `_connect_stream` method which takes a `pa_buffer_attr*` struct,
+    and connects an appropriate stream.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
 
     def __init__(self, id, samplerate, channels, blocksize=None, name='outputstream'):
         self._id = id
@@ -182,27 +215,61 @@ class _Stream:
         while self._pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
         if self._pulse._pa_stream_get_state(self.stream) == _pa.PA_STREAM_FAILED:
-            raise RuntimeError('Stream creation failed. Stream is in status {}'.format(_pa.pa_stream_get_state(self.stream)))
+            raise RuntimeError('Stream creation failed. Stream is in status {}'
+                               .format(self._pulse.pa_stream_get_state(self.stream)))
         channel_map = self._pulse._pa_stream_get_channel_map(self.stream)
         self.channels = int(channel_map.channels)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
-        self._pulse._pa_stream_disconnect(self.stream)
-        while self._pulse._pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
-            time.sleep(0.01)
-        self._pulse._pa_stream_unref(self.stream)
-        self._pulse.__exit__(exc_type, exc_value, traceback)
+        try:
+            self._pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
+            self._pulse._pa_stream_disconnect(self.stream)
+            while self._pulse._pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
+                time.sleep(0.01)
+                self._pulse._pa_stream_unref(self.stream)
+        finally:
+            # make sure that this definitely gets called no matter what:
+            self._pulse.__exit__(exc_type, exc_value, traceback)
 
 
 class _Player(_Stream):
+    """A context manager for an active output stream.
+
+    Audio playback is available as soon as the context manager is
+    entered. Audio data can be played using the `play` method.
+    Successive calls to `play` will queue up the audio one piece after
+    another. If no audio is queued up, this will play silence.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_playback(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY,
                                                 _ffi.NULL, _ffi.NULL)
 
     def play(self, data):
+        """Play some audio data.
+
+        Internally, all data is handled as float32 and with the
+        appropriate number of channels. For maximum performance,
+        provide data as a `frames × channels` float32 numpy array.
+
+        If single-channel or one-dimensional data is given, this data
+        will be played on all available channels.
+
+        This function will return *before* all data has been played,
+        so that additional data can be provided for gapless playback.
+        The amount of buffering can be controlled through the
+        blocksize of the player object.
+
+        If data is provided faster than it is played, later pieces
+        will be queued up and played one after another.
+
+        """
+
         data = numpy.array(data, dtype='float32')
         if data.ndim == 1:
             data = data[:, None] # force 2d
@@ -224,11 +291,36 @@ class _Player(_Stream):
 
 
 class _Recorder(_Stream):
+    """A context manager for an active input stream.
+
+    Audio recording is available as soon as the context manager is
+    entered. Recorded audio data can be read using the `record`
+    method. If no audio data is available, `record` will block until
+    the requested amount of audio data has been recorded.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
 
     def record(self, num_frames):
+        """Record some audio data.
+
+        The data will be returned as a `frames × channels` float32
+        numpy array.
+
+        This function will wait until `num_frames` frames have been
+        recorded. However, the audio backend holds the final authority
+        over how much audio data can be read at a time, so the
+        returned amount of data will often be slightly larger than
+        what was requested. The amount of buffering can be controlled
+        through the blocksize of the recorder object.
+
+        """
+
         captured_frames = 0
         captured_data = []
         data_ptr = _ffi.new('void**')
@@ -253,6 +345,7 @@ class _Recorder(_Stream):
 
 
 def _lock(func):
+    """Call a pulseaudio function while holding the mainloop lock."""
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
@@ -261,18 +354,46 @@ def _lock(func):
 
 
 def _lock_and_block(func):
+    """Call a pulseaudio function while holding the mainloop lock, and
+       block until the operation has finished.
+
+    Use this for pulseaudio functions that return a `pa_operation *`.
+
+    """
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
-            result = func(*args[1:], **kwargs)
-        self._block_operation(result)
+            operation = func(*args[1:], **kwargs)
+        self._block_operation(operation)
+        self._pa_operation_unref(operation)
     return func_with_lock
 
 
 class _PulseAudio:
-    """Communcation with Pulseaudio."""
+    """Context manager for communcation with Pulseaudio.
+
+    This instantiates the pulseaudio main loop, and a pulseaudio
+    context. Together, these provide the building blocks for
+    interacting with pulseaudio.
+
+    Pulseaudio can be interacted with as soon as the context manager
+    is entered.
+
+    This can be used to query the pulseaudio server for sources,
+    sinks, and server information, and provides thread-safe access to
+    the main pulseaudio functions.
+
+    Any function that would return a `pa_operation *` in pulseaudio
+    will block until the operation has finished.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
 
     def __init__(self):
+        # these functions are called before the mainloop starts, so we
+        # don't need to hold the lock:
         self.mainloop = _pa.pa_threaded_mainloop_new()
         self.mainloop_api = _pa.pa_threaded_mainloop_get_api(self.mainloop)
         self.context = _pa.pa_context_new(self.mainloop_api, b"audio")
@@ -280,6 +401,8 @@ class _PulseAudio:
 
     def __enter__(self):
         _pa.pa_threaded_mainloop_start(self.mainloop)
+        # from now on, all pulseaudio interactions needs to hold the
+        # mainloop lock.
         while self._pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
             time.sleep(0.001)
         return self
@@ -289,18 +412,20 @@ class _PulseAudio:
         self._block_operation(operation)
         self._pa_context_disconnect(self.context)
         self._pa_context_unref(self.context)
+        # no more mainloop locking necessary from here on:
         _pa.pa_threaded_mainloop_stop(self.mainloop)
         _pa.pa_threaded_mainloop_free(self.mainloop)
 
     def _block_operation(self, operation):
+        """Wait until the operation has finished."""
         if operation == _ffi.NULL:
             return
         while self._pa_operation_get_state(operation) == _pa.PA_OPERATION_RUNNING:
             time.sleep(0.001)
-        self._pa_operation_unref(operation)
 
     @property
     def source_list(self):
+        """Return a list of dicts of information about available sources."""
         info = []
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
@@ -311,6 +436,7 @@ class _PulseAudio:
         return info
 
     def source_info(self, id):
+        """Return a dictionary of information about a specific source."""
         info = []
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
@@ -323,6 +449,7 @@ class _PulseAudio:
 
     @property
     def sink_list(self):
+        """Return a list of dicts of information about available sinks."""
         info = []
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
@@ -333,6 +460,7 @@ class _PulseAudio:
         return info
 
     def sink_info(self, id):
+        """Return a dictionary of information about a specific sink."""
         info = []
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
@@ -345,6 +473,7 @@ class _PulseAudio:
 
     @property
     def server_info(self):
+        """Return a dictionary of information about the server."""
         info = {}
         @_ffi.callback("pa_server_info_cb_t")
         def callback(context, server_info, userdata):
@@ -356,6 +485,13 @@ class _PulseAudio:
         return info
 
     def _lock_mainloop(self):
+        """Context manager for locking the mainloop.
+
+        Hold this lock before calling any pulseaudio function while
+        the mainloop is running.
+
+        """
+
         class Lock():
             def __enter__(self_):
                 _pa.pa_threaded_mainloop_lock(self.mainloop)
@@ -363,6 +499,7 @@ class _PulseAudio:
                 _pa.pa_threaded_mainloop_unlock(self.mainloop)
         return Lock()
 
+    # create thread-safe versions of all used pulseaudio functions:
     _pa_context_get_source_info_list = _lock_and_block(_pa.pa_context_get_source_info_list)
     _pa_context_get_source_info_by_name = _lock_and_block(_pa.pa_context_get_source_info_by_name)
     _pa_context_get_sink_info_list = _lock_and_block(_pa.pa_context_get_sink_info_list)
