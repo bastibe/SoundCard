@@ -1,0 +1,188 @@
+// All files are found in /System/Library/Frameworks
+
+// CoreFoundation/CFBase.h:
+typedef unsigned char           Boolean;
+typedef unsigned char           UInt8;
+typedef signed char             SInt8;
+typedef unsigned short          UInt16;
+typedef signed short            SInt16;
+typedef unsigned int            UInt32;
+typedef signed int              SInt32;
+typedef uint64_t		        UInt64;
+typedef int64_t		            SInt64;
+typedef SInt32                  OSStatus;
+typedef float                   Float32;
+typedef double                  Float64;
+typedef unsigned short          UniChar;
+typedef unsigned long           UniCharCount;
+typedef unsigned char *         StringPtr;
+typedef const unsigned char *   ConstStringPtr;
+typedef unsigned char           Str255[256];
+typedef const unsigned char *   ConstStr255Param;
+typedef SInt16                  OSErr;
+typedef SInt16                  RegionCode;
+typedef SInt16                  LangCode;
+typedef SInt16                  ScriptCode;
+typedef UInt32                  FourCharCode;
+typedef FourCharCode            OSType;
+typedef UInt8                   Byte;
+typedef SInt8                   SignedByte;
+typedef UInt32                  UTF32Char;
+typedef UInt16                  UTF16Char;
+typedef UInt8                   UTF8Char;
+typedef signed long long CFIndex;
+typedef const void * CFStringRef;
+
+// CoreFoundation/CFString.h
+typedef UInt32 CFStringEncoding;
+CFIndex CFStringGetLength(CFStringRef theString);
+Boolean CFStringGetCString(CFStringRef theString, char *buffer, CFIndex bufferSize, CFStringEncoding encoding);
+
+// CoreFoundation/CFRunLoop.h
+typedef struct __CFRunLoop * CFRunLoopRef;
+
+// CoreAudio/AudioHardwareBase.h
+typedef UInt32  AudioObjectID;
+typedef UInt32  AudioObjectPropertySelector;
+typedef UInt32  AudioObjectPropertyScope;
+typedef UInt32  AudioObjectPropertyElement;
+struct  AudioObjectPropertyAddress
+{
+    AudioObjectPropertySelector mSelector;
+    AudioObjectPropertyScope    mScope;
+    AudioObjectPropertyElement  mElement;
+};
+typedef struct AudioObjectPropertyAddress AudioObjectPropertyAddress;
+
+// CoreAudio/AudioHardware.h
+Boolean AudioObjectHasProperty(AudioObjectID inObjectID, const AudioObjectPropertyAddress* inAddress);
+OSStatus AudioObjectGetPropertyDataSize(AudioObjectID inObjectID,
+                                        const AudioObjectPropertyAddress* inAddress,
+                                        UInt32 inQualifierDataSize,
+                                        const void* inQualifierData,
+                                        UInt32* outDataSize);
+OSStatus AudioObjectGetPropertyData(AudioObjectID inObjectID,
+                                    const AudioObjectPropertyAddress* inAddress,
+                                    UInt32 inQualifierDataSize,
+                                    const void* inQualifierData,
+                                    UInt32* ioDataSize,
+                                    void* outData);
+
+
+// CoreAudioTypes.h
+typedef UInt32	AudioFormatID;
+typedef UInt32	AudioFormatFlags;
+struct AudioStreamBasicDescription
+{
+    Float64             mSampleRate;
+    AudioFormatID       mFormatID;
+    AudioFormatFlags    mFormatFlags;
+    UInt32              mBytesPerPacket;
+    UInt32              mFramesPerPacket;
+    UInt32              mBytesPerFrame;
+    UInt32              mChannelsPerFrame;
+    UInt32              mBitsPerChannel;
+    UInt32              mReserved;
+};
+typedef struct AudioStreamBasicDescription  AudioStreamBasicDescription;
+struct  AudioStreamPacketDescription
+{
+    SInt64  mStartOffset;
+    UInt32  mVariableFramesInPacket;
+    UInt32  mDataByteSize;
+};
+typedef struct AudioStreamPacketDescription AudioStreamPacketDescription;
+
+// AudioToolbox/AudioQueue.h
+
+// data structures:
+
+typedef struct OpaqueAudioQueue *   AudioQueueRef;
+typedef struct AudioQueueBuffer {
+    const UInt32                    mAudioDataBytesCapacity;
+    void * const                    mAudioData;
+    UInt32                          mAudioDataByteSize;
+    void *                          mUserData;
+    const UInt32                    mPacketDescriptionCapacity;
+    AudioStreamPacketDescription * const mPacketDescriptions;
+    UInt32                          mPacketDescriptionCount;
+} AudioQueueBuffer;
+typedef AudioQueueBuffer *AudioQueueBufferRef;
+struct SMPTETime
+{
+    SInt16  mSubframes;
+    SInt16  mSubframeDivisor;
+    UInt32  mCounter;
+    UInt32  mType;
+    UInt32  mFlags;
+    SInt16  mHours;
+    SInt16  mMinutes;
+    SInt16  mSeconds;
+    SInt16  mFrames;
+};
+typedef struct SMPTETime    SMPTETime;
+struct AudioTimeStamp
+{
+    Float64         mSampleTime;
+    UInt64          mHostTime;
+    Float64         mRateScalar;
+    UInt64          mWordClockTime;
+    SMPTETime       mSMPTETime;
+    UInt32          mFlags;
+    UInt32          mReserved;
+};
+typedef struct AudioTimeStamp   AudioTimeStamp;
+typedef UInt32      AudioQueuePropertyID;
+
+// callbacks:
+
+typedef void (*AudioQueueInputCallback)(
+    void *                          inUserData,
+    AudioQueueRef                   inAQ,
+    AudioQueueBufferRef             inBuffer,
+    const AudioTimeStamp *          inStartTime,
+    UInt32                          inNumberPacketDescriptions,
+    const AudioStreamPacketDescription *inPacketDescs);
+typedef void (*AudioQueueOutputCallback)(
+    void *                  inUserData,
+    AudioQueueRef           inAQ,
+    AudioQueueBufferRef     inBuffer);
+
+// functions:
+
+OSStatus AudioQueueNewOutput(const AudioStreamBasicDescription *inFormat,
+                             AudioQueueOutputCallback inCallbackProc,
+                             void *inUserData,
+                             CFRunLoopRef inCallbackRunLoop,
+                             CFStringRef inCallbackRunLoopMode,
+                             UInt32 inFlags,
+                             AudioQueueRef *outAQ);
+OSStatus AudioQueueNewInput(const AudioStreamBasicDescription *inFormat,
+                            AudioQueueInputCallback         inCallbackProc,
+                            void *                          inUserData,
+                            CFRunLoopRef                    inCallbackRunLoop,
+                            CFStringRef                     inCallbackRunLoopMode,
+                            UInt32                          inFlags,
+                            AudioQueueRef *                 outAQ);
+
+OSStatus AudioQueueStart(AudioQueueRef inAQ,
+                         const AudioTimeStamp *inStartTime);
+OSStatus AudioQueuePrime(AudioQueueRef inAQ,
+                         UInt32 inNumberOfFramesToPrepare,
+                         UInt32 *outNumberOfFramesPrepared);
+OSStatus AudioQueueStop(AudioQueueRef inAQ, Boolean inImmediate);
+OSStatus AudioQueuePause(AudioQueueRef inAQ);
+OSStatus AudioQueueFlush(AudioQueueRef inAQ);
+OSStatus AudioQueueReset(AudioQueueRef inAQ);
+
+OSStatus AudioQueueGetProperty(AudioQueueRef           inAQ,
+                               AudioQueuePropertyID    inID,
+                               void *                  outData,
+                               UInt32 *                ioDataSize);
+OSStatus AudioQueueSetProperty(AudioQueueRef           inAQ,
+                               AudioQueuePropertyID    inID,
+                               const void *            inData,
+                               UInt32                  inDataSize);
+OSStatus AudioQueueGetPropertySize(AudioQueueRef           inAQ,
+                                   AudioQueuePropertyID    inID,
+                                   UInt32 *                outDataSize);

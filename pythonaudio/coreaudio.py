@@ -1,120 +1,76 @@
-from cffi import FFI
+import os
+import cffi
 
-ffi = FFI()
-ffi.cdef("""
-// CoreFoundation/CFBase.h:
-typedef unsigned char           Boolean;
-typedef unsigned int            UInt32;
-typedef signed int              SInt32;
-typedef SInt32                  OSStatus;
-typedef signed long long CFIndex;
-typedef const void * CFStringRef;
+_ffi = cffi.FFI()
+_package_dir, _ = os.path.split(__file__)
+with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
+    _ffi.cdef(f.read())
 
-// CoreFoundation/CFString.h
-typedef UInt32 CFStringEncoding;
-CFIndex CFStringGetLength(CFStringRef theString);
-Boolean CFStringGetCString(CFStringRef theString, char *buffer, CFIndex bufferSize, CFStringEncoding encoding);
+_ca = _ffi.dlopen('CoreAudio')
 
-// CoreAudio/AudioHardwareBase.h
-typedef UInt32  AudioObjectID;
-typedef UInt32  AudioObjectPropertySelector;
-typedef UInt32  AudioObjectPropertyScope;
-typedef UInt32  AudioObjectPropertyElement;
-struct  AudioObjectPropertyAddress
-{
-    AudioObjectPropertySelector mSelector;
-    AudioObjectPropertyScope    mScope;
-    AudioObjectPropertyElement  mElement;
-};
-typedef struct AudioObjectPropertyAddress AudioObjectPropertyAddress;
+import coreaudioconstants as _cac
 
-// CoreAudio/AudioHardware.h
-Boolean AudioObjectHasProperty(AudioObjectID inObjectID, const AudioObjectPropertyAddress* inAddress);
-OSStatus AudioObjectGetPropertyDataSize(AudioObjectID inObjectID,
-                                        const AudioObjectPropertyAddress* inAddress,
-                                        UInt32 inQualifierDataSize,
-                                        const void* inQualifierData,
-                                        UInt32* outDataSize);
-OSStatus AudioObjectGetPropertyData(AudioObjectID inObjectID,
-                                    const AudioObjectPropertyAddress* inAddress,
-                                    UInt32 inQualifierDataSize,
-                                    const void* inQualifierData,
-                                    UInt32* ioDataSize,
-                                    void* outData);
-""")
+def all_soundcards():
+    """A list of all known speakers."""
+    device_ids = _get_core_audio_property(_cac.kAudioObjectSystemObject,
+                                          _cac.kAudioHardwarePropertyDevices,
+                                          "AudioObjectID")
+    return [_Soundcard(id=d) for d in device_ids]
 
-kAudioObjectSystemObject = 1
-kAudioHardwarePropertyDevices = int.from_bytes(b'dev#', byteorder='big')
-kAudioHardwarePropertyDefaultInputDevice = int.from_bytes(b'dIn ', byteorder='big')
-kAudioHardwarePropertyDefaultOutputDevice = int.from_bytes(b'dOut', byteorder='big')
+def default_speaker():
+    device_id, = _get_core_audio_property(_cac.kAudioObjectSystemObject,
+                                          _cac.kAudioHardwarePropertyDefaultOutputDevice,
+                                          "AudioObjectID")
+    return _Soundcard(id=device_id)
 
-kAudioObjectPropertyScopeGlobal = int.from_bytes(b'glob', byteorder='big')
-kAudioObjectPropertyScopeInput = int.from_bytes(b'inpt', byteorder='big')
-kAudioObjectPropertyScopeOutput = int.from_bytes(b'outp', byteorder='big')
-kAudioObjectPropertyScopePlayThrough = int.from_bytes(b'ptru', byteorder='big')
+def default_microphone():
+    device_id, = _get_core_audio_property(_cac.kAudioObjectSystemObject,
+                                          _cac.kAudioHardwarePropertyDefaultInputDevice,
+                                          "AudioObjectID")
+    return _Soundcard(id=device_id)
 
-kAudioObjectPropertyName = int.from_bytes(b'lnam', byteorder='big')
-kAudioObjectPropertyModelName = int.from_bytes(b'lmod', byteorder='big')
-kAudioObjectPropertyManufacturer = int.from_bytes(b'lmak', byteorder='big')
+class _Soundcard:
+    def __init__(self, *, id):
+        self._id = id
 
-kCFStringEncodingUTF8 = 0x08000100
+    def __repr__(self):
+        name = _get_core_audio_property(self._id, _cac.kAudioObjectPropertyName, 'CFStringRef')
+        return '<SoundCard {}>'.format(_CFString_to_str(name))
 
-ca = ffi.dlopen('CoreAudio')
 
-def get_core_audio_property(target, selector, ctype):
-    kAudioObjectPropertyElementMaster = 0
-    prop = ffi.new("AudioObjectPropertyAddress*",
+def _get_core_audio_property(target, selector, ctype):
+    prop = _ffi.new("AudioObjectPropertyAddress*",
                    {'mSelector': selector,
-                    'mScope': kAudioObjectPropertyScopeGlobal,
-                    'mElement': kAudioObjectPropertyElementMaster})
+                    'mScope': _cac.kAudioObjectPropertyScopeGlobal,
+                    'mElement': _cac.kAudioObjectPropertyElementMaster})
 
-    has_prop = ca.AudioObjectHasProperty(target, prop)
+    has_prop = _ca.AudioObjectHasProperty(target, prop)
     assert has_prop == 1, 'Core Audio does not have the requested property'
 
-    size = ffi.new("UInt32*")
-    err = ca.AudioObjectGetPropertyDataSize(target, prop, 0, ffi.NULL, size)
+    size = _ffi.new("UInt32*")
+    err = _ca.AudioObjectGetPropertyDataSize(target, prop, 0, _ffi.NULL, size)
     assert err == 0, "Can't get Core Audio property size"
-    num_values = int(size[0]//ffi.sizeof(ctype))
+    num_values = int(size[0]//_ffi.sizeof(ctype))
 
-    prop_data = ffi.new(ctype+'[]', num_values)
-    err = ca.AudioObjectGetPropertyData(target, prop, 0, ffi.NULL,
+    prop_data = _ffi.new(ctype+'[]', num_values)
+    err = _ca.AudioObjectGetPropertyData(target, prop, 0, _ffi.NULL,
                                         size, prop_data)
     assert err == 0, "Can't get Core Audio property data"
 
     return [prop_data[idx] for idx in range(num_values)]
 
-def device_ids():
-    device_ids = get_core_audio_property(kAudioObjectSystemObject,
-                                         kAudioHardwarePropertyDevices,
-                                         "AudioObjectID")
-    default_input_id = get_core_audio_property(kAudioObjectSystemObject,
-                                               kAudioHardwarePropertyDefaultInputDevice,
-                                               "AudioObjectID")
-    default_output_id = get_core_audio_property(kAudioObjectSystemObject,
-                                                kAudioHardwarePropertyDefaultOutputDevice,
-                                                "AudioObjectID")
+def _CFString_to_str(str_data):
+    str_length = _ca.CFStringGetLength(str_data[0])
+    str_buffer = _ffi.new('char[]', str_length+1)
 
-    return dict(ids=device_ids,
-                default_in=default_input_id[0],
-                default_out=default_output_id[0])
-
-def core_foundation_string_to_str(str_data):
-    str_length = ca.CFStringGetLength(str_data[0])
-    str_buffer = ffi.new('char[]', str_length+1)
-
-    err = ca.CFStringGetCString(str_data[0], str_buffer, str_length+1, kCFStringEncodingUTF8)
+    err = _ca.CFStringGetCString(str_data[0], str_buffer, str_length+1, _cac.kCFStringEncodingUTF8)
     assert err == 1, "Could not decode string"
 
-    return ffi.string(str_buffer).decode()
+    return _ffi.string(str_buffer).decode()
 
-print('Device Names:')
-ids = device_ids()
-for dev in ids['ids']:
-    name = get_core_audio_property(dev, kAudioObjectPropertyName, 'CFStringRef')
-    if dev == ids['default_in']:
-        defaultstring = ' (default input)'
-    elif dev == ids['default_out']:
-        defaultstring = ' (default output)'
-    else:
-        defaultstring = ''
-    print('    {}: {}{}'.format(dev, core_foundation_string_to_str(name), defaultstring))
+print('All Soundcards:')
+print(all_soundcards())
+print('Default Speaker:')
+print(default_speaker())
+print('Default Microphone:')
+print(default_microphone())
