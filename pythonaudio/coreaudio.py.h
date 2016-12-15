@@ -186,3 +186,96 @@ OSStatus AudioQueueSetProperty(AudioQueueRef           inAQ,
 OSStatus AudioQueueGetPropertySize(AudioQueueRef           inAQ,
                                    AudioQueuePropertyID    inID,
                                    UInt32 *                outDataSize);
+
+
+// AudioComponent.h
+
+typedef struct AudioComponentDescription {
+    OSType              componentType;
+    OSType              componentSubType;
+    OSType              componentManufacturer;
+    UInt32              componentFlags;
+    UInt32              componentFlagsMask;
+} AudioComponentDescription;
+typedef struct OpaqueAudioComponent *   AudioComponent;
+typedef struct ComponentInstanceRecord *        AudioComponentInstance;
+AudioComponent AudioComponentFindNext(AudioComponent inComponent,
+                                      const AudioComponentDescription *inDesc);
+OSStatus AudioComponentInstanceNew(AudioComponent inComponent,
+                                   AudioComponentInstance *outInstance);
+OSStatus AudioComponentInstanceDispose(AudioComponentInstance inInstance);
+OSStatus AudioComponentCopyName(AudioComponent inComponent,
+                                CFStringRef *outName);
+OSStatus AudioComponentGetDescription(AudioComponent inComponent,
+                                      AudioComponentDescription *outDesc);
+
+// AUComponent.h
+
+typedef AudioComponentInstance AudioUnit;
+typedef UInt32 AudioUnitPropertyID;
+typedef UInt32 AudioUnitScope;
+typedef UInt32 AudioUnitElement;
+
+OSStatus AudioUnitInitialize(AudioUnit inUnit);
+OSStatus AudioUnitGetPropertyInfo(AudioUnit	inUnit,
+                                  AudioUnitPropertyID inID,
+                                  AudioUnitScope inScope,
+                                  AudioUnitElement inElement,
+                                  UInt32 *outDataSize,
+                                  Boolean *outWritable);
+OSStatus AudioUnitGetProperty(AudioUnit inUnit,
+                              AudioUnitPropertyID inID,
+                              AudioUnitScope inScope,
+                              AudioUnitElement inElement,
+                              void *outData,
+                              UInt32 *ioDataSize);
+OSStatus AudioUnitSetProperty(AudioUnit inUnit,
+                              AudioUnitPropertyID inID,
+                              AudioUnitScope inScope,
+                              AudioUnitElement inElement,
+                              const void *inData,
+                              UInt32 inDataSize);
+
+OSStatus AudioOutputUnitStart(AudioUnit	ci);
+OSStatus AudioOutputUnitStop(AudioUnit ci);
+
+typedef UInt32 AudioUnitRenderActionFlags;
+
+struct AudioBuffer
+{
+    UInt32 mNumberChannels;
+    UInt32 mDataByteSize;
+    void* mData;
+};
+typedef struct AudioBuffer  AudioBuffer;
+
+struct AudioBufferList
+{
+    UInt32      mNumberBuffers;
+    AudioBuffer mBuffers[1]; // this is a variable length array of mNumberBuffers elements
+};
+typedef struct AudioBufferList  AudioBufferList;
+
+OSStatus AudioUnitProcess(AudioUnit inUnit,
+                          AudioUnitRenderActionFlags * ioActionFlags,
+                          const AudioTimeStamp *inTimeStamp,
+                          UInt32 inNumberFrames,
+                          AudioBufferList *ioData);
+OSStatus AudioUnitRender(AudioUnit inUnit,
+                         AudioUnitRenderActionFlags * ioActionFlags,
+                         const AudioTimeStamp * inTimeStamp,
+                         UInt32 inOutputBusNumber,
+                         UInt32 inNumberFrames,
+                         AudioBufferList *ioData);
+
+typedef OSStatus (*AURenderCallback)(void * inRefCon,
+                                     AudioUnitRenderActionFlags *ioActionFlags,
+                                     const AudioTimeStamp *inTimeStamp,
+                                     UInt32 inBusNumber,
+                                     UInt32 inNumberFrames,
+                                     AudioBufferList *ioData);
+
+typedef struct AURenderCallbackStruct {
+	AURenderCallback inputProc;
+	void *inputProcRefCon;
+} AURenderCallbackStruct;
