@@ -252,7 +252,7 @@ typedef struct AudioBuffer  AudioBuffer;
 struct AudioBufferList
 {
     UInt32      mNumberBuffers;
-    AudioBuffer mBuffers[1]; // this is a variable length array of mNumberBuffers elements
+    AudioBuffer mBuffers[]; // this is a variable length array of mNumberBuffers elements
 };
 typedef struct AudioBufferList  AudioBufferList;
 

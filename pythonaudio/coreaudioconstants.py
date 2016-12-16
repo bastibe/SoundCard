@@ -33,6 +33,7 @@ kAudioUnitType_Output = int.from_bytes(b'auou', byteorder='big')
 kAudioUnitManufacturer_Apple = int.from_bytes(b'appl', byteorder='big')
 kAudioUnitSubType_GenericOutput	= int.from_bytes(b'genr', byteorder='big')
 kAudioUnitSubType_HALOutput = int.from_bytes(b'ahal', byteorder='big')
+kAudioUnitSubType_DefaultOutput	= int.from_bytes(b'def ', byteorder='big')
 # The audio unit can do input from the device as well as output to the
 # device. Bus 0 is used for the output side, bus 1 is used to get audio
 # input from the device.
