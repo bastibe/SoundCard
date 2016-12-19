@@ -97,17 +97,6 @@ typedef struct AudioStreamPacketDescription AudioStreamPacketDescription;
 
 // data structures:
 
-typedef struct OpaqueAudioQueue *   AudioQueueRef;
-typedef struct AudioQueueBuffer {
-    const UInt32                    mAudioDataBytesCapacity;
-    void * const                    mAudioData;
-    UInt32                          mAudioDataByteSize;
-    void *                          mUserData;
-    const UInt32                    mPacketDescriptionCapacity;
-    AudioStreamPacketDescription * const mPacketDescriptions;
-    UInt32                          mPacketDescriptionCount;
-} AudioQueueBuffer;
-typedef AudioQueueBuffer *AudioQueueBufferRef;
 struct SMPTETime
 {
     SInt16  mSubframes;
@@ -132,61 +121,6 @@ struct AudioTimeStamp
     UInt32          mReserved;
 };
 typedef struct AudioTimeStamp   AudioTimeStamp;
-typedef UInt32      AudioQueuePropertyID;
-
-// callbacks:
-
-typedef void (*AudioQueueInputCallback)(
-    void *                          inUserData,
-    AudioQueueRef                   inAQ,
-    AudioQueueBufferRef             inBuffer,
-    const AudioTimeStamp *          inStartTime,
-    UInt32                          inNumberPacketDescriptions,
-    const AudioStreamPacketDescription *inPacketDescs);
-typedef void (*AudioQueueOutputCallback)(
-    void *                  inUserData,
-    AudioQueueRef           inAQ,
-    AudioQueueBufferRef     inBuffer);
-
-// functions:
-
-OSStatus AudioQueueNewOutput(const AudioStreamBasicDescription *inFormat,
-                             AudioQueueOutputCallback inCallbackProc,
-                             void *inUserData,
-                             CFRunLoopRef inCallbackRunLoop,
-                             CFStringRef inCallbackRunLoopMode,
-                             UInt32 inFlags,
-                             AudioQueueRef *outAQ);
-OSStatus AudioQueueNewInput(const AudioStreamBasicDescription *inFormat,
-                            AudioQueueInputCallback         inCallbackProc,
-                            void *                          inUserData,
-                            CFRunLoopRef                    inCallbackRunLoop,
-                            CFStringRef                     inCallbackRunLoopMode,
-                            UInt32                          inFlags,
-                            AudioQueueRef *                 outAQ);
-
-OSStatus AudioQueueStart(AudioQueueRef inAQ,
-                         const AudioTimeStamp *inStartTime);
-OSStatus AudioQueuePrime(AudioQueueRef inAQ,
-                         UInt32 inNumberOfFramesToPrepare,
-                         UInt32 *outNumberOfFramesPrepared);
-OSStatus AudioQueueStop(AudioQueueRef inAQ, Boolean inImmediate);
-OSStatus AudioQueuePause(AudioQueueRef inAQ);
-OSStatus AudioQueueFlush(AudioQueueRef inAQ);
-OSStatus AudioQueueReset(AudioQueueRef inAQ);
-
-OSStatus AudioQueueGetProperty(AudioQueueRef           inAQ,
-                               AudioQueuePropertyID    inID,
-                               void *                  outData,
-                               UInt32 *                ioDataSize);
-OSStatus AudioQueueSetProperty(AudioQueueRef           inAQ,
-                               AudioQueuePropertyID    inID,
-                               const void *            inData,
-                               UInt32                  inDataSize);
-OSStatus AudioQueueGetPropertySize(AudioQueueRef           inAQ,
-                                   AudioQueuePropertyID    inID,
-                                   UInt32 *                outDataSize);
-
 
 // AudioComponent.h
 

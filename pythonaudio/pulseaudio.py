@@ -95,9 +95,6 @@ class _Speaker:
 
     Properties:
     - `channels`: the number of available channels
-    - `latency`: length of queued audio in the output buffer
-    - `configured_latency`: the expected latency of the sound card
-      if data is written as fast as it is played.
 
     """
 
@@ -110,14 +107,6 @@ class _Speaker:
     @property
     def channels(self):
         return self._get_info()['channels']
-
-    @property
-    def latency(self):
-        return self._get_info()['latency']
-
-    @property
-    def configured_latency(self):
-        return self._get_info()['configured_latency']
 
     def _get_info(self):
         with _PulseAudio() as p:
@@ -140,9 +129,6 @@ class _Microphone:
 
     Properties:
     - `channels`: the number of available channels
-    - `latency`: length of queued audio in the input buffer
-    - `configured_latency`: the expected latency of the sound card
-      if data is read as fast as it is recorded.
 
     """
 
@@ -155,14 +141,6 @@ class _Microphone:
     @property
     def channels(self):
         return self._get_info()['channels']
-
-    @property
-    def latency(self):
-        return self._get_info()['latency']
-
-    @property
-    def configured_latency(self):
-        return self._get_info()['configured_latency']
 
     def _get_info(self):
         with _PulseAudio() as p:
