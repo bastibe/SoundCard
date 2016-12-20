@@ -67,6 +67,12 @@ OSStatus AudioObjectGetPropertyData(AudioObjectID inObjectID,
                                     const void* inQualifierData,
                                     UInt32* ioDataSize,
                                     void* outData);
+OSStatus AudioObjectSetPropertyData(AudioObjectID inObjectID,
+                                    const AudioObjectPropertyAddress* inAddress,
+                                    UInt32 inQualifierDataSize,
+                                    const void* inQualifierData,
+                                    UInt32 inDataSize,
+                                    const void* inData);
 
 
 // CoreAudioTypes.h
@@ -213,3 +219,10 @@ typedef struct AURenderCallbackStruct {
 	AURenderCallback inputProc;
 	void *inputProcRefCon;
 } AURenderCallbackStruct;
+
+struct AudioValueRange
+{
+    Float64 mMinimum;
+    Float64 mMaximum;
+};
+typedef struct AudioValueRange  AudioValueRange;

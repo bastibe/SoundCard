@@ -66,7 +66,7 @@ class _Speaker(_Soundcard):
             return 0
 
     def player(self, samplerate, blocksize=None):
-        return _Player(self._id, samplerate, 1)
+        return _Player(self._id, samplerate, 1, blocksize=blocksize)
 
     def play(self, data, samplerate, blocksize=None):
         with self.player(samplerate, blocksize) as p:
@@ -114,6 +114,16 @@ def _get_core_audio_property(target, selector, ctype, scope=_cac.kAudioObjectPro
 
     return [prop_data[idx] for idx in range(num_values)]
 
+def _set_core_audio_property(target, selector, prop_data, scope=_cac.kAudioObjectPropertyScopeGlobal):
+    prop = _ffi.new("AudioObjectPropertyAddress*",
+                    {'mSelector': selector,
+                     'mScope': scope,
+                     'mElement': _cac.kAudioObjectPropertyElementMaster})
+
+    err = _ca.AudioObjectSetPropertyData(target, prop, 0, _ffi.NULL,
+                                         _ffi.sizeof(_ffi.typeof(prop_data).item.cname), prop_data)
+    assert err == 0, "Can't set Core Audio property data"
+
 def _CFString_to_str(str_data):
     str_length = _ca.CFStringGetLength(str_data[0])
     str_buffer = _ffi.new('char[]', str_length+1)
@@ -124,107 +134,20 @@ def _CFString_to_str(str_data):
     return _ffi.string(str_buffer).decode()
 
 
-class _Player:
-    def __init__(self, id, samplerate, channels, blocksize=None, name='outputstream'):
+class _Stream:
+    def __init__(self, id, samplerate, channels, blocksize=None):
         self._id = id
         self._samplerate = samplerate
-        self._name = name
         self._blocksize = blocksize
         self.channels = channels
 
-    def __enter__(self):
-        desc = _ffi.new(
-            "AudioComponentDescription*",
-            dict(componentType=_cac.kAudioUnitType_Output,
-                 componentSubType=_cac.kAudioUnitSubType_HALOutput,
-                 componentFlags=0,
-                 componentFlagsMask=0,
-                 componentManufacturer=_cac.kAudioUnitManufacturer_Apple))
-
-        audiocomponent = _au.AudioComponentFindNext(_ffi.NULL, desc)
-        name = _ffi.new("CFStringRef*")
-        status = _au.AudioComponentCopyName(audiocomponent, name)
-        print("CopyName:", status, _CFString_to_str(name))
-
-        self._audiounit = _ffi.new("AudioComponentInstance*")
-        status = _au.AudioComponentInstanceNew(audiocomponent, self._audiounit)
-        print("InstanceNew:", status)
-        status = _au.AudioUnitInitialize(self._audiounit[0])
-        print("Initialize:", status)
-
-        data = _ffi.new("UInt32*", self._id)
-        self._set_property(
-            _cac.kAudioOutputUnitProperty_CurrentDevice,
-            _cac.kAudioUnitScope_Input, 0,
-            data)
-
-        data = _ffi.new("UInt32*", 1)
-        self._set_property(
-            _cac.kAudioOutputUnitProperty_EnableIO,
-            _cac.kAudioUnitScope_Input, 1,
-            data)
-
-        data = _ffi.new("Float64*", self._samplerate)
-        self._set_property(
-            _cac.kAudioUnitProperty_SampleRate,
-            _cac.kAudioUnitScope_Input, 0,
-            data)
-
-        streamformat = _ffi.new(
-            "AudioStreamBasicDescription*",
-            dict(mSampleRate=self._samplerate,
-                 mFormatID = _cac.kAudioFormatLinearPCM,
-                 mFormatFlags=_cac.kAudioFormatFlagIsFloat,
-                 mFramesPerPacket=1, # uncompressed audio
-                 mChannelsPerFrame=self.channels,
-                 mBitsPerChannel=32,
-                 mBytesPerPacket=self.channels * 4,
-                 mBytesPerFrame=self.channels * 4))
-        self._set_property(
-            _cac.kAudioUnitProperty_StreamFormat,
-            _cac.kAudioUnitScope_Input, 0,
-            streamformat)
-
-        self._queue = collections.deque()
-
-        @_ffi.callback("AURenderCallback")
-        def render_callback(userdata, actionflags, timestamp,
-                            busnumber, numframes, bufferlist):
-            if self._queue:
-                src = self._queue.popleft()
-            else:
-                src = np.zeros(numframes, "float32")
-            srcbuffer = _ffi.from_buffer(src)
-
-            for bufferidx in range(bufferlist.mNumberBuffers):
-                dest = bufferlist.mBuffers[bufferidx]
-                destbuffer = _ffi.buffer(dest.mData, dest.mDataByteSize)
-                _ffi.memmove(destbuffer, srcbuffer, len(srcbuffer))
-            return 0
-
-        self._callback = render_callback
-
-        callbackstruct = _ffi.new(
-            "AURenderCallbackStruct*",
-            dict(inputProc=render_callback,
-                 inputProcRefCon=_ffi.NULL))
-        status = _au.AudioUnitSetProperty(
-            self._audiounit[0],
-            _cac.kAudioUnitProperty_SetRenderCallback,
-            _cac.kAudioUnitScope_Global, 0,
-            callbackstruct, _ffi.sizeof(callbackstruct[0]))
-        print("SetRenderCallback:", status)
-
-        status = _au.AudioOutputUnitStart(self._audiounit[0])
-        print("Start:", status)
-
-        return self
-
     def __exit__(self, exc_type, exc_value, traceback):
         status = _au.AudioOutputUnitStop(self._audiounit[0])
-        print("Stop:", status)
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
         status = _au.AudioComponentInstanceDispose(self._audiounit[0])
-        print("Dispose:", status)
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
         del self._audiounit
 
     def _set_property(self, property, scope, element, data):
@@ -245,38 +168,190 @@ class _Player:
             raise RuntimeError(_cac.error_number_to_string(status))
         return data
 
+    def _set_blocksize(self):
+        if self._blocksize is not None:
+            framesizerange = _get_core_audio_property(
+                self._id,
+                _cac.kAudioDevicePropertyBufferFrameSizeRange,
+                'AudioValueRange', scope=_cac.kAudioObjectPropertyScopeOutput)
+            assert framesizerange
+            if not(framesizerange[0].mMinimum <= self._blocksize <= framesizerange[0].mMaximum):
+                raise RuntimeError("blocksize must be between {} and {} (is {})"
+                                   .format(framesizerange[0].mMinimum,
+                                           framesizerange[0].mMaximum,
+                                           self._blocksize))
+
+            framesize = _ffi.new("UInt32*", self._blocksize)
+            status = _set_core_audio_property(
+                self._id,
+                _cac.kAudioDevicePropertyBufferFrameSize,
+                framesize, scope=_cac.kAudioObjectPropertyScopeOutput)
+        else:
+            framesize = _get_core_audio_property(
+                self._id,
+                _cac.kAudioDevicePropertyBufferFrameSize,
+                'UInt32', scope=_cac.kAudioObjectPropertyScopeOutput)
+            assert framesize
+            self._blocksize = framesize[0]
+
+    def _create_audiounit(self):
+        desc = _ffi.new(
+            "AudioComponentDescription*",
+            dict(componentType=_cac.kAudioUnitType_Output,
+                 componentSubType=_cac.kAudioUnitSubType_HALOutput,
+                 componentFlags=0,
+                 componentFlagsMask=0,
+                 componentManufacturer=_cac.kAudioUnitManufacturer_Apple))
+
+        audiocomponent = _au.AudioComponentFindNext(_ffi.NULL, desc)
+        if not audiocomponent:
+            raise Runtime("could not find audio component")
+        self._audiounit = _ffi.new("AudioComponentInstance*")
+        status = _au.AudioComponentInstanceNew(audiocomponent, self._audiounit)
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
+
+    def _set_device(self):
+        data = _ffi.new("UInt32*", self._id)
+        self._set_property(
+            _cac.kAudioOutputUnitProperty_CurrentDevice,
+            _cac.kAudioUnitScope_Global, 0, data)
+
+    def _set_enable_io(self, scope, element):
+        data = _ffi.new("UInt32*", 1)
+        self._set_property(
+            _cac.kAudioOutputUnitProperty_EnableIO,
+            scope, element, data)
+
+    def _set_disable_io(self, scope, element):
+        data = _ffi.new("UInt32*", 0)
+        self._set_property(
+            _cac.kAudioOutputUnitProperty_EnableIO,
+            scope, element, data)
+
+    def _set_samplerate(self, scope, element):
+        data = _ffi.new("Float64*", self._samplerate)
+        self._set_property(
+            _cac.kAudioUnitProperty_SampleRate,
+            scope, element, data)
+
+    def _set_stream_format(self, scope, element):
+        streamformat = _ffi.new(
+            "AudioStreamBasicDescription*",
+            dict(mSampleRate=self._samplerate,
+                 mFormatID = _cac.kAudioFormatLinearPCM,
+                 mFormatFlags=_cac.kAudioFormatFlagIsFloat,
+                 mFramesPerPacket=1, # uncompressed audio
+                 mChannelsPerFrame=self.channels,
+                 mBitsPerChannel=32,
+                 mBytesPerPacket=self.channels * 4,
+                 mBytesPerFrame=self.channels * 4))
+        self._set_property(
+            _cac.kAudioUnitProperty_StreamFormat,
+            scope, element, streamformat)
+
+    def _set_callback(self, scope, element): # TODO: must always be input scope?
+        callbackstruct = _ffi.new(
+            "AURenderCallbackStruct*",
+            dict(inputProc=self._render_callback,
+                 inputProcRefCon=_ffi.NULL))
+        self._set_property(
+            _cac.kAudioUnitProperty_SetRenderCallback,
+            scope, element, callbackstruct)
+
+
+class _Player(_Stream):
+    def __enter__(self):
+        self._set_blocksize()
+        self._create_audiounit()
+        self._set_device()
+        self._set_enable_io(_cac.kAudioUnitScope_Output, 0)
+        self._set_disable_io(_cac.kAudioUnitScope_Input, 1)
+        self._set_samplerate(_cac.kAudioUnitScope_Input, 0)
+        self._set_stream_format(_cac.kAudioUnitScope_Input, 0)
+
+        self._queue = collections.deque()
+
+        @_ffi.callback("AURenderCallback")
+        def render_callback(userdata, actionflags, timestamp,
+                            busnumber, numframes, bufferlist):
+            if self._queue:
+                src = self._queue.popleft()
+            else:
+                src = np.zeros(numframes, "float32")
+            srcbuffer = _ffi.from_buffer(src)
+
+            for bufferidx in range(bufferlist.mNumberBuffers):
+                dest = bufferlist.mBuffers[bufferidx]
+                destbuffer = _ffi.buffer(dest.mData, dest.mDataByteSize)
+                _ffi.memmove(destbuffer, srcbuffer, len(srcbuffer))
+            return 0
+
+        self._render_callback = render_callback
+
+        self._set_callback(_cac.kAudioUnitScope_Global, 0)
+
+        status = _au.AudioUnitInitialize(self._audiounit[0])
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
+        status = _au.AudioOutputUnitStart(self._audiounit[0])
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
+
+        return self
+
     def play(self, data):
         data = np.asarray(data*0.5, dtype="float32")
         data[data>1] = 1
         data[data<-1] = -1
         idx = 0
-        blocksize = 512
-        while idx < len(data)-blocksize:
-            self._queue.append(data[idx:idx+blocksize])
-            idx += blocksize
+        while idx < len(data)-self._blocksize:
+            self._queue.append(data[idx:idx+self._blocksize])
+            idx += self._blocksize
         self._queue.append(data[idx:])
         while self._queue:
             time.sleep(0.01)
 
 
+class _Recorder(_Stream):
+    def __enter__(self):
+        self._set_blocksize()
+        self._create_audiounit()
+        self._set_enable_io(_cac.kAudioUnitScope_Input, 1)
+        self._set_disable_io(_cac.kAudioUnitScope_Output, 0)
+        self._set_device()
+        self._set_samplerate(_cac.kAudioUnitScope_Input, 0)
+        self._set_stream_format(_cac.kAudioUnitScope_Input, 0)
 
-# status = _au.AudioUnitSetProperty(audiounit[0],
-#                                   _cac.kAudioOutputUnitProperty_EnableIO,
-#                                   _cac.kAudioUnitScope_Input, 1,
-#                                   data, datasize[0]);
-# print("EnableInputIO:", status)
+        self._queue = collections.deque()
 
-# status = _au.AudioUnitGetProperty(audiounit[0],
-#                                   _cac.kAudioUnitProperty_MaximumFramesPerSlice,
-#                                   _cac.kAudioUnitScope_Global, 0,
-#                                   data, datasize);
-# print("GetProperty:", status, 'MaxFramesPerSlice:', data[0])
+        @_ffi.callback("AURenderCallback")
+        def render_callback(userdata, actionflags, timestamp,
+                            busnumber, numframes, bufferlist):
+            self._queue.append([1])
+            print('recording')
+            return 0
 
-# status = _au.AudioUnitSetProperty(
-#     audiounit[0], _cac.kAudioUnitProperty_StreamFormat,
-#     _cac.kAudioUnitScope_Input, 0,
-#     streamformat, _ffi.sizeof(streamformat[0]))
-# print("SetInputStreamFormat:", status)
+        self._render_callback = render_callback
+
+        self._set_callback(_cac.kAudioUnitScope_Global, 0)
+
+        status = _au.AudioUnitInitialize(self._audiounit[0])
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
+        status = _au.AudioOutputUnitStart(self._audiounit[0])
+        if status:
+            raise RuntimeError(_cac.error_number_to_string(status))
+
+        return self
+
+    def record(self, numframes):
+        while len(self._queue) < numframes/self._blocksize:
+            time.sleep(0.01)
+        data = self._queue
+        self._queue.clear()
+        return data
+
 
 # Here's how to do it: http://atastypixel.com/blog/using-remoteio-audio-unit/
 
