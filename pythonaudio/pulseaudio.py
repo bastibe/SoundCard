@@ -14,7 +14,7 @@ import numpy
 
 
 def all_speakers():
-    """A list of all known speakers."""
+    """A list of all connected speakers."""
     with _PulseAudio() as p:
         return [_Speaker(id=s['id']) for s in p.sink_list]
 
@@ -85,7 +85,7 @@ def _match_soundcard(id, soundcards):
             return soundcard
     raise IndexError('no soundcard with id {}'.format(id))
 
-
+# TODO: implement name property
 class _Speaker:
     """A soundcard output. Can be used to play audio.
 

@@ -16,7 +16,7 @@ import coreaudioconstants as _cac
 
 
 def all_speakers():
-    """A list of all known speakers."""
+    """A list of all connected speakers."""
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDevices,
@@ -26,7 +26,7 @@ def all_speakers():
 
 
 def all_microphones():
-    """A list of all known microphones."""
+    """A list of all connected microphones."""
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDevices,
@@ -36,6 +36,7 @@ def all_microphones():
 
 
 def default_speaker():
+    """The default speaker of the system."""
     device_id, = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDefaultOutputDevice,
@@ -44,6 +45,7 @@ def default_speaker():
 
 
 def default_microphone():
+    """The default microphone of the system."""
     device_id, = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDefaultInputDevice,
@@ -52,6 +54,12 @@ def default_microphone():
 
 
 class _Soundcard:
+    """A soundcard. This is meant to be subclassed.
+
+    Properties:
+    - `name`: the name of the soundcard
+
+    """
     def __init__(self, *, id):
         self._id = id
 
@@ -61,8 +69,20 @@ class _Soundcard:
             self._id, _cac.kAudioObjectPropertyName, 'CFStringRef')
         return _CoreAudio.CFString_to_str(name)
 
-
+# TODO: implement soundcard searching
 class _Speaker(_Soundcard):
+    """A soundcard output. Can be used to play audio.
+
+    Use the `play` method to play one piece of audio, or use the
+    `player` method to get a context manager for playing continuous
+    audio.
+
+    Properties:
+    - `channels`: the number of available channels
+    - `name`: the name of the soundcard
+
+    """
+
     @property
     def channels(self):
         bufferlist = _CoreAudio.get_property(
@@ -86,6 +106,18 @@ class _Speaker(_Soundcard):
 
 
 class _Microphone(_Soundcard):
+    """A soundcard input. Can be used to record audio.
+
+    Use the `record` method to record a piece of audio, or use the
+    `recorder` method to get a context manager for recording
+    continuous audio.
+
+    Properties:
+    - `channels`: the number of available channels
+    - `name`: the name of the soundcard
+
+    """
+
     @property
     def channels(self):
         bufferlist = _CoreAudio.get_property(
@@ -109,8 +141,26 @@ class _Microphone(_Soundcard):
 
 
 class _CoreAudio:
+    """A helper class for interacting with CoreAudio."""
+
     @staticmethod
     def get_property(target, selector, ctype, scope=_cac.kAudioObjectPropertyScopeGlobal):
+        """Get a CoreAudio property.
+
+        This might include things like a list of available sound
+        cards, or various meta data about those sound cards.
+
+        Arguments:
+        - `target`: The AudioObject that the property belongs to
+        - `selector`: The Selector for this property
+        - `scope`: The Scope for this property
+        - `ctype`: The type of the property
+
+        Returns:
+        A list of objects of type `ctype`
+
+        """
+
         prop = _ffi.new("AudioObjectPropertyAddress*",
                         {'mSelector': selector,
                          'mScope': scope,
@@ -133,6 +183,18 @@ class _CoreAudio:
 
     @staticmethod
     def set_property(target, selector, prop_data, scope=_cac.kAudioObjectPropertyScopeGlobal):
+        """Set a CoreAudio property.
+
+        This is typically a piece of meta data about a sound card.
+
+        Arguments:
+        - `target`: The AudioObject that the property belongs to
+        - `selector`: The Selector for this property
+        - `scope`: The Scope for this property
+        - `prop_data`: The new property value
+
+        """
+
         prop = _ffi.new("AudioObjectPropertyAddress*",
                         {'mSelector': selector,
                          'mScope': scope,
@@ -144,6 +206,8 @@ class _CoreAudio:
 
     @staticmethod
     def CFString_to_str(cfstrptr):
+        """Converts a CFStringRef to a Python str."""
+
         str_length = _ca.CFStringGetLength(cfstrptr[0])
         str_buffer = _ffi.new('char[]', str_length+1)
 
@@ -154,6 +218,18 @@ class _CoreAudio:
 
 
 class _Player:
+    """A context manager for an active output stream.
+
+    Audio playback is available as soon as the context manager is
+    entered. Audio data can be played using the `play` method.
+    Successive calls to `play` will queue up the audio one piece after
+    another. If no audio is queued up, this will play silence.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
+
     def __init__(self, id, samplerate, channels, blocksize=None):
         self._au = _AudioUnit("output", id, samplerate, channels, blocksize)
 
@@ -184,6 +260,25 @@ class _Player:
         self._au.close()
 
     def play(self, data, wait=True):
+        """Play some audio data.
+
+        Internally, all data is handled as float32 and with the
+        appropriate number of channels. For maximum performance,
+        provide data as a `frames × channels` float32 numpy array.
+
+        If single-channel or one-dimensional data is given, this data
+        will be played on all available channels.
+
+        This function will return *before* all data has been played,
+        so that additional data can be provided for gapless playback.
+        The amount of buffering can be controlled through the
+        blocksize of the player object.
+
+        If data is provided faster than it is played, later pieces
+        will be queued up and played one after another.
+
+        """
+
         data = np.asarray(data*0.5, dtype="float32")
         data[data>1] = 1
         data[data<-1] = -1
@@ -197,6 +292,18 @@ class _Player:
 
 
 class _Recorder:
+    """A context manager for an active input stream.
+
+    Audio recording is available as soon as the context manager is
+    entered. Recorded audio data can be read using the `record`
+    method. If no audio data is available, `record` will block until
+    the requested amount of audio data has been recorded.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
+
     def __init__(self, id, samplerate, channels, blocksize=None):
         self._au = _AudioUnit("input", id, samplerate, channels, blocksize)
 
@@ -237,8 +344,22 @@ class _Recorder:
     def __exit__(self, exc_type, exc_value, traceback):
         self._au.close()
 
-    def record(self, numframes):
-        while len(self._queue) < numframes/self._au.blocksize:
+    def record(self, num_frames):
+        """Record some audio data.
+
+        The data will be returned as a `frames × channels` float32
+        numpy array.
+
+        This function will wait until `num_frames` frames have been
+        recorded. However, the audio backend holds the final authority
+        over how much audio data can be read at a time, so the
+        returned amount of data will often be slightly larger than
+        what was requested. The amount of buffering can be controlled
+        through the blocksize of the recorder object.
+
+        """
+
+        while len(self._queue) < num_frames/self._au.blocksize:
             time.sleep(0.001)
 
         data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
@@ -247,6 +368,25 @@ class _Recorder:
 
 
 class _AudioUnit:
+    """Communication helper with AudioUnits.
+
+    This provides an abstraction over a single AudioUnit. Can be used
+    as soon as it instatiated.
+
+    Properties:
+    - `enableinput`, `enableoutput`: set up the AudioUnit for playback
+       or recording. It is not possible to record and play at the same
+       time.
+    - `device`: The numeric ID of the underlying CoreAudio device.
+    - `blocksize`: The amount of buffering in the AudioUnit. Values
+       outside of `blocksizerange` will be silently clamped to that
+       range.
+    - `blocksizerange`: The minimum and maximum possible block size.
+    - `samplerate`: The sampling rate of the CoreAudio device. This
+       will lead to errors if changed in a recording AudioUnit.
+    - `channels`: The number of channels of the AudioUnit.
+
+    """
 
     def __init__(self, iotype, device, samplerate, channels, blocksize):
         self._iotype = iotype
@@ -411,6 +551,8 @@ class _AudioUnit:
             framesize, scope=_cac.kAudioObjectPropertyScopeOutput)
 
     def set_callback(self, callback):
+        """Set a callback function for the AudioUnit. """
+
         if self._iotype == 'input':
             callbacktype = _cac.kAudioOutputUnitProperty_SetInputCallback
         elif self._iotype == 'output':
@@ -426,6 +568,8 @@ class _AudioUnit:
             _cac.kAudioUnitScope_Global, 0, callbackstruct)
 
     def start(self):
+        """Start processing audio, and start calling the callback."""
+
         status = _au.AudioUnitInitialize(self.ptr[0])
         if status:
             raise RuntimeError(_cac.error_number_to_string(status))
@@ -434,6 +578,8 @@ class _AudioUnit:
             raise RuntimeError(_cac.error_number_to_string(status))
 
     def close(self):
+        """Stop processing audio, and stop calling the callback."""
+
         status = _au.AudioOutputUnitStop(self.ptr[0])
         if status:
             raise RuntimeError(_cac.error_number_to_string(status))
