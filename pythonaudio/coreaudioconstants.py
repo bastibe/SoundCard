@@ -18,30 +18,14 @@ kAudioDevicePropertyBufferFrameSizeRange = int.from_bytes(b'fsz#', byteorder='bi
 kAudioDevicePropertyUsesVariableBufferFrameSizes = int.from_bytes(b'vfsz', byteorder='big')
 kAudioDevicePropertyStreamConfiguration = int.from_bytes(b'slay', byteorder='big')
 
-kAudioEndPointInputChannelsKey = "channels-in"
-kAudioEndPointOutputChannelsKey = "channels-out"
-kAudioSubDeviceOutputChannelsKey = "channels-out"
-kAudioSubDeviceInputChannelsKey = "channels-in"
-
-kAudioQueueProperty_IsRunning = int.from_bytes(b'aqrn', byteorder='big') # value is UInt32
-
-kAudioQueueDeviceProperty_SampleRate = int.from_bytes(b'aqsr', byteorder='big') # value is Float64
-kAudioQueueDeviceProperty_NumberChannels = int.from_bytes(b'aqdc', byteorder='big') # value is UInt32
-kAudioQueueProperty_CurrentDevice = int.from_bytes(b'aqcd', byteorder='big') # value is CFStringRef
-
-kAudioQueueProperty_MagicCookie = int.from_bytes(b'aqmc', byteorder='big') # value is void*
-kAudioQueueProperty_MaximumOutputPacketSize = int.from_bytes(b'xops', byteorder='big') # value is UInt32
-kAudioQueueProperty_StreamDescription = int.from_bytes(b'aqft', byteorder='big') # value is AudioStreamBasicDescription
-
 kCFStringEncodingUTF8 = 0x08000100
 kAudioObjectPropertyElementMaster = 0
 
-
 kAudioUnitType_Output = int.from_bytes(b'auou', byteorder='big')
 kAudioUnitManufacturer_Apple = int.from_bytes(b'appl', byteorder='big')
-kAudioUnitSubType_GenericOutput        = int.from_bytes(b'genr', byteorder='big')
+kAudioUnitSubType_GenericOutput = int.from_bytes(b'genr', byteorder='big')
 kAudioUnitSubType_HALOutput = int.from_bytes(b'ahal', byteorder='big')
-kAudioUnitSubType_DefaultOutput        = int.from_bytes(b'def ', byteorder='big')
+kAudioUnitSubType_DefaultOutput = int.from_bytes(b'def ', byteorder='big')
 # The audio unit can do input from the device as well as output to the
 # device. Bus 0 is used for the output side, bus 1 is used to get audio
 # input from the device.
@@ -104,27 +88,27 @@ def error_number_to_string(num):
     else:
         return "error number {}".format(num)
 
-kAudioUnitErr_InvalidProperty               = -10879
-kAudioUnitErr_InvalidParameter               = -10878
-kAudioUnitErr_InvalidElement               = -10877
-kAudioUnitErr_NoConnection               = -10876
-kAudioUnitErr_FailedInitialization     = -10875
-kAudioUnitErr_TooManyFramesToProcess   = -10874
-kAudioUnitErr_InvalidFile               = -10871
-kAudioUnitErr_UnknownFileType               = -10870
-kAudioUnitErr_FileNotSpecified               = -10869
-kAudioUnitErr_FormatNotSupported       = -10868
-kAudioUnitErr_Uninitialized               = -10867
-kAudioUnitErr_InvalidScope               = -10866
-kAudioUnitErr_PropertyNotWritable      = -10865
+kAudioUnitErr_InvalidProperty = -10879
+kAudioUnitErr_InvalidParameter = -10878
+kAudioUnitErr_InvalidElement = -10877
+kAudioUnitErr_NoConnection = -10876
+kAudioUnitErr_FailedInitialization = -10875
+kAudioUnitErr_TooManyFramesToProcess = -10874
+kAudioUnitErr_InvalidFile = -10871
+kAudioUnitErr_UnknownFileType = -10870
+kAudioUnitErr_FileNotSpecified = -10869
+kAudioUnitErr_FormatNotSupported = -10868
+kAudioUnitErr_Uninitialized = -10867
+kAudioUnitErr_InvalidScope = -10866
+kAudioUnitErr_PropertyNotWritable = -10865
 kAudioUnitErr_CannotDoInCurrentContext = -10863
-kAudioUnitErr_InvalidPropertyValue     = -10851
-kAudioUnitErr_PropertyNotInUse               = -10850
-kAudioUnitErr_Initialized               = -10849
-kAudioUnitErr_InvalidOfflineRender     = -10848
-kAudioUnitErr_Unauthorized               = -10847
+kAudioUnitErr_InvalidPropertyValue = -10851
+kAudioUnitErr_PropertyNotInUse = -10850
+kAudioUnitErr_Initialized = -10849
+kAudioUnitErr_InvalidOfflineRender = -10848
+kAudioUnitErr_Unauthorized = -10847
 kAudioComponentErr_InstanceInvalidated = -66749
-kAudioUnitErr_RenderTimeout               = -66745
+kAudioUnitErr_RenderTimeout = -66745
 
 kAudioOutputUnitProperty_CurrentDevice = 2000
 kAudioOutputUnitProperty_EnableIO = 2003 # scope output, element 0 == output,
@@ -141,7 +125,8 @@ kAudioUnitProperty_Latency = 12
 kAudioUnitProperty_SupportedNumChannels = 13
 kAudioUnitProperty_MaximumFramesPerSlice = 14
 kAudioUnitProperty_SetRenderCallback = 23
-kAudioUnitProperty_StreamFormat        = 8
+kAudioOutputUnitProperty_SetInputCallback = 2005
+kAudioUnitProperty_StreamFormat = 8
 kAudioUnitProperty_SampleRate = 2
 kAudioUnitProperty_ContextName = 25
 kAudioUnitProperty_ElementName = 30

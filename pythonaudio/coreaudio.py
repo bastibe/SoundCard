@@ -65,11 +65,11 @@ class _Speaker(_Soundcard):
         else:
             return 0
 
-    def player(self, samplerate, blocksize=None):
-        return _Player(self._id, samplerate, 1, blocksize=blocksize)
+    def player(self, samplerate, channels=None, blocksize=None):
+        return _Player(self._id, samplerate, channels or self.channels, blocksize=blocksize)
 
-    def play(self, data, samplerate, blocksize=None):
-        with self.player(samplerate, blocksize) as p:
+    def play(self, data, samplerate, channels=None, blocksize=None):
+        with self.player(samplerate, channels or self.channels, blocksize) as p:
             p.play(data)
 
 
@@ -85,11 +85,11 @@ class _Microphone(_Soundcard):
         else:
             return 0
 
-    def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._id, samplerate, 1)
+    def recorder(self, samplerate, channels=None, blocksize=None):
+        return _Recorder(self._id, samplerate, channels or self.channels)
 
-    def record(self, numframes, samplerate, blocksize=None):
-        with self.recorder(samplerate, blocksize) as p:
+    def record(self, numframes, samplerate, channels=None, blocksize=None):
+        with self.recorder(samplerate, channels or self.channels, blocksize) as p:
             p.record(numframes)
 
 
@@ -250,23 +250,24 @@ class _Stream:
             _cac.kAudioUnitProperty_StreamFormat,
             scope, element, streamformat)
 
-    def _set_callback(self, scope, element): # TODO: must always be input scope?
+    def _set_callback(self, callback, callbacktype):
+        self._render_callback = callback
         callbackstruct = _ffi.new(
             "AURenderCallbackStruct*",
-            dict(inputProc=self._render_callback,
+            dict(inputProc=callback,
                  inputProcRefCon=_ffi.NULL))
         self._set_property(
-            _cac.kAudioUnitProperty_SetRenderCallback,
-            scope, element, callbackstruct)
+            callbacktype,
+            _cac.kAudioUnitScope_Global, 0, callbackstruct)
 
 
 class _Player(_Stream):
     def __enter__(self):
         self._set_blocksize()
         self._create_audiounit()
-        self._set_device()
         self._set_enable_io(_cac.kAudioUnitScope_Output, 0)
         self._set_disable_io(_cac.kAudioUnitScope_Input, 1)
+        self._set_device()
         self._set_samplerate(_cac.kAudioUnitScope_Input, 0)
         self._set_stream_format(_cac.kAudioUnitScope_Input, 0)
 
@@ -287,9 +288,7 @@ class _Player(_Stream):
                 _ffi.memmove(destbuffer, srcbuffer, len(srcbuffer))
             return 0
 
-        self._render_callback = render_callback
-
-        self._set_callback(_cac.kAudioUnitScope_Global, 0)
+        self._set_callback(render_callback, _cac.kAudioUnitProperty_SetRenderCallback)
 
         status = _au.AudioUnitInitialize(self._audiounit[0])
         if status:
@@ -300,7 +299,7 @@ class _Player(_Stream):
 
         return self
 
-    def play(self, data):
+    def play(self, data, wait=True):
         data = np.asarray(data*0.5, dtype="float32")
         data[data>1] = 1
         data[data<-1] = -1
@@ -309,8 +308,8 @@ class _Player(_Stream):
             self._queue.append(data[idx:idx+self._blocksize])
             idx += self._blocksize
         self._queue.append(data[idx:])
-        while self._queue:
-            time.sleep(0.01)
+        while self._queue and wait:
+            time.sleep(0.001)
 
 
 class _Recorder(_Stream):
@@ -320,21 +319,35 @@ class _Recorder(_Stream):
         self._set_enable_io(_cac.kAudioUnitScope_Input, 1)
         self._set_disable_io(_cac.kAudioUnitScope_Output, 0)
         self._set_device()
-        self._set_samplerate(_cac.kAudioUnitScope_Input, 0)
-        self._set_stream_format(_cac.kAudioUnitScope_Input, 0)
+        self._set_samplerate(_cac.kAudioUnitScope_Output, 1)
+        self._set_stream_format(_cac.kAudioUnitScope_Output, 1)
 
         self._queue = collections.deque()
 
         @_ffi.callback("AURenderCallback")
-        def render_callback(userdata, actionflags, timestamp,
-                            busnumber, numframes, bufferlist):
-            self._queue.append([1])
-            print('recording')
-            return 0
+        def input_callback(userdata, actionflags, timestamp,
+                           busnumber, numframes, bufferlist):
+            bufferlist = _ffi.new("AudioBufferList*", [1, 1])
+            bufferlist.mNumberBuffers = 1
+            bufferlist.mBuffers[0].mNumberChannels = self.channels
+            bufferlist.mBuffers[0].mDataByteSize = numframes * 4 * self.channels
+            data = _ffi.new("Float32[]", numframes * self.channels)
+            bufferlist.mBuffers[0].mData = data
 
-        self._render_callback = render_callback
+            status = _au.AudioUnitRender(self._audiounit[0],
+                                         actionflags,
+                                         timestamp,
+                                         busnumber,
+                                         numframes,
+                                         bufferlist)
 
-        self._set_callback(_cac.kAudioUnitScope_Global, 0)
+            if status != 0:
+                print(status)
+
+            self._queue.append(data)
+            return status
+
+        self._set_callback(input_callback, _cac.kAudioOutputUnitProperty_SetInputCallback)
 
         status = _au.AudioUnitInitialize(self._audiounit[0])
         if status:
@@ -347,26 +360,12 @@ class _Recorder(_Stream):
 
     def record(self, numframes):
         while len(self._queue) < numframes/self._blocksize:
-            time.sleep(0.01)
-        data = self._queue
+            time.sleep(0.001)
+
+        data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
         self._queue.clear()
         return data
 
 
 # Here's how to do it: http://atastypixel.com/blog/using-remoteio-audio-unit/
-
-# timestamp = _ffi.new("AudioTimeStamp*")
-# timestamp.mSampleTime = 0
-# timestamp.mFlags = 0x1
-# bufferlist = _ffi.new("AudioBufferList*")
-# bufferlist.mNumberBuffers = 1
-# bufferlist.mBuffers[0].mNumberChannels = 2
-# bytesptr = _ffi.from_buffer(data)
-# bufferlist.mBuffers[0].mDataByteSize = len(data)*4
-# bufferlist.mBuffers[0].mData = bytesptr
-# renderactionflags = _ffi.new("AudioUnitRenderActionFlags*")
-# status = _au.AudioUnitRender(audiounit[0], renderactionflags,
-#                              timestamp, _cac.outputbus,
-#                              len(data),
-#                              bufferlist)
-# print("Render:", status, renderactionflags[0])
+# https://developer.apple.com/library/content/technotes/tn2091/_index.html
