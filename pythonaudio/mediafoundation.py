@@ -1,288 +1,25 @@
 """Re-Implementation of https://msdn.microsoft.com/en-us/library/windows/desktop/aa369729%28v=vs.85%29.aspx using the CFFI"""
 
-from cffi import FFI
+import os
+import cffi
+import numpy as np
 
-ffi = FFI()
+_ffi = cffi.FFI()
+_package_dir, _ = os.path.split(__file__)
+with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
+    _ffi.cdef(f.read())
 
-ffi.cdef("""
-// see um/winnt.h:
-typedef long HRESULT;
-typedef wchar_t *LPWSTR;
-
-// originally, struct=interface, see um/combaseapi.h
-
-// see shared/rpcndr.h:
-typedef unsigned char byte;
-
-// see shared/guiddef.h:
-typedef struct {
-    unsigned long  Data1;
-    unsigned short Data2;
-    unsigned short Data3;
-    byte           Data4[ 8 ];
-} GUID;
-typedef GUID IID;
-typedef IID *LPIID;
-
-// see um/mmdeviceapi.h:
-typedef struct IMMDeviceEnumerator IMMDeviceEnumerator;
-typedef struct IMMDeviceCollection IMMDeviceCollection;
-typedef struct IMMDevice IMMDevice;
-typedef struct IMMNotificationClient IMMNotificationClient;
-
-// see um/mfidl.h:
-typedef struct IMFMediaSink IMFMediaSink;
-
-// see um/mfobjects.h:
-typedef struct IMFAttributes IMFAttributes;
-
-// see um/Unknwn.h:
-typedef struct IUnknown IUnknown;
-typedef IUnknown *LPUNKNOWN;
-
-// see shared/wtypes.h:
-typedef unsigned long DWORD;
-typedef const char *LPCSTR;
-
-// see shared/WTypesbase.h:
-typedef void *LPVOID;
-typedef LPCSTR LPCOLESTR;
-typedef IID *REFIID;
-
-// see um/combaseapi.h:
-HRESULT CoCreateInstance(const GUID* rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, const GUID* riid, LPVOID * ppv);
-HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
-HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
-
-// see um/mmdeviceapi.h:
-typedef enum EDataFlow {eRender, eCapture, eAll, EDataFlow_enum_count} EDataFlow;
-
-typedef enum ERole {eConsole, eMultimedia, eCommunications, ERole_enum_count} ERole;
-
-typedef struct IMMDeviceEnumeratorVtbl
-{
-    HRESULT ( __stdcall *QueryInterface )(IMMDeviceEnumerator * This, const GUID *riid, void **ppvObject);
-    ULONG ( __stdcall *AddRef )(IMMDeviceEnumerator * This);
-    ULONG ( __stdcall *Release )(IMMDeviceEnumerator * This);
-    HRESULT ( __stdcall *EnumAudioEndpoints )(IMMDeviceEnumerator * This, EDataFlow dataFlow, DWORD dwStateMask, IMMDeviceCollection **ppDevices);
-    HRESULT ( __stdcall *GetDefaultAudioEndpoint )(IMMDeviceEnumerator * This, EDataFlow dataFlow, ERole role, IMMDevice **ppEndpoint);
-    HRESULT ( __stdcall *GetDevice )(IMMDeviceEnumerator * This, LPCWSTR pwstrId, IMMDevice **ppDevice);
-/* I hope I won't need these
-    HRESULT ( __stdcall *RegisterEndpointNotificationCallback )(IMMDeviceEnumerator * This, IMMNotificationClient *pClient);
-    HRESULT ( __stdcall *UnregisterEndpointNotificationCallback )(IMMDeviceEnumerator * This, IMMNotificationClient *pClient);
-*/
-} IMMDeviceEnumeratorVtbl;
-
-struct IMMDeviceEnumerator
-{
-    const struct IMMDeviceEnumeratorVtbl *lpVtbl;
-};
-
-typedef struct IMMDeviceCollectionVtbl
-{
-    HRESULT ( __stdcall *QueryInterface )(IMMDeviceCollection * This, REFIID riid, void **ppvObject);
-    ULONG ( __stdcall *AddRef )(IMMDeviceCollection * This);
-    ULONG ( __stdcall *Release )(IMMDeviceCollection * This);
-    HRESULT ( __stdcall *GetCount )(IMMDeviceCollection * This, UINT *pcDevices);
-    HRESULT ( __stdcall *Item )(IMMDeviceCollection * This, UINT nDevice, IMMDevice **ppDevice);
-} IMMDeviceCollectionVtbl;
-
-struct IMMDeviceCollection
-{
-    const struct IMMDeviceCollectionVtbl *lpVtbl;
-};
-
-// see um/mfobjects.h:
-
-typedef struct IMFAttributesVtbl
-    {
-        BEGIN_INTERFACE
-
-        HRESULT ( STDMETHODCALLTYPE *QueryInterface )(
-            __RPC__in IMFAttributes * This,
-            /* [in] */ __RPC__in REFIID riid,
-            /* [annotation][iid_is][out] */
-            _COM_Outptr_  void **ppvObject);
-
-        ULONG ( STDMETHODCALLTYPE *AddRef )(
-            __RPC__in IMFAttributes * This);
-
-        ULONG ( STDMETHODCALLTYPE *Release )(
-            __RPC__in IMFAttributes * This);
-
-        HRESULT ( STDMETHODCALLTYPE *GetItem )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [full][out][in] */ __RPC__inout_opt PROPVARIANT *pValue);
-
-        HRESULT ( STDMETHODCALLTYPE *GetItemType )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out MF_ATTRIBUTE_TYPE *pType);
-
-        HRESULT ( STDMETHODCALLTYPE *CompareItem )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            __RPC__in REFPROPVARIANT Value,
-            /* [out] */ __RPC__out BOOL *pbResult);
-
-        HRESULT ( STDMETHODCALLTYPE *Compare )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in_opt IMFAttributes *pTheirs,
-            MF_ATTRIBUTES_MATCH_TYPE MatchType,
-            /* [out] */ __RPC__out BOOL *pbResult);
-
-        HRESULT ( STDMETHODCALLTYPE *GetUINT32 )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out UINT32 *punValue);
-
-        HRESULT ( STDMETHODCALLTYPE *GetUINT64 )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out UINT64 *punValue);
-
-        HRESULT ( STDMETHODCALLTYPE *GetDouble )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out double *pfValue);
-
-        HRESULT ( STDMETHODCALLTYPE *GetGUID )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out GUID *pguidValue);
-
-        HRESULT ( STDMETHODCALLTYPE *GetStringLength )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out UINT32 *pcchLength);
-
-        HRESULT ( STDMETHODCALLTYPE *GetString )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [size_is][out] */ __RPC__out_ecount_full(cchBufSize) LPWSTR pwszValue,
-            UINT32 cchBufSize,
-            /* [full][out][in] */ __RPC__inout_opt UINT32 *pcchLength);
-
-        HRESULT ( STDMETHODCALLTYPE *GetAllocatedString )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [size_is][size_is][out] */ __RPC__deref_out_ecount_full_opt(( *pcchLength + 1 ) ) LPWSTR *ppwszValue,
-            /* [out] */ __RPC__out UINT32 *pcchLength);
-
-        HRESULT ( STDMETHODCALLTYPE *GetBlobSize )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [out] */ __RPC__out UINT32 *pcbBlobSize);
-
-        HRESULT ( STDMETHODCALLTYPE *GetBlob )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [size_is][out] */ __RPC__out_ecount_full(cbBufSize) UINT8 *pBuf,
-            UINT32 cbBufSize,
-            /* [full][out][in] */ __RPC__inout_opt UINT32 *pcbBlobSize);
-
-        HRESULT ( STDMETHODCALLTYPE *GetAllocatedBlob )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [size_is][size_is][out] */ __RPC__deref_out_ecount_full_opt(*pcbSize) UINT8 **ppBuf,
-            /* [out] */ __RPC__out UINT32 *pcbSize);
-
-        HRESULT ( STDMETHODCALLTYPE *GetUnknown )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            __RPC__in REFIID riid,
-            /* [iid_is][out] */ __RPC__deref_out_opt LPVOID *ppv);
-
-        HRESULT ( STDMETHODCALLTYPE *SetItem )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            __RPC__in REFPROPVARIANT Value);
-
-        HRESULT ( STDMETHODCALLTYPE *DeleteItem )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey);
-
-        HRESULT ( STDMETHODCALLTYPE *DeleteAllItems )(
-            __RPC__in IMFAttributes * This);
-
-        HRESULT ( STDMETHODCALLTYPE *SetUINT32 )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            UINT32 unValue);
-
-        HRESULT ( STDMETHODCALLTYPE *SetUINT64 )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            UINT64 unValue);
-
-        HRESULT ( STDMETHODCALLTYPE *SetDouble )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            double fValue);
-
-        HRESULT ( STDMETHODCALLTYPE *SetGUID )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            __RPC__in REFGUID guidValue);
-
-        HRESULT ( STDMETHODCALLTYPE *SetString )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [string][in] */ __RPC__in_string LPCWSTR wszValue);
-
-        HRESULT ( STDMETHODCALLTYPE *SetBlob )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [size_is][in] */ __RPC__in_ecount_full(cbBufSize) const UINT8 *pBuf,
-            UINT32 cbBufSize);
-
-        HRESULT ( STDMETHODCALLTYPE *SetUnknown )(
-            __RPC__in IMFAttributes * This,
-            __RPC__in REFGUID guidKey,
-            /* [in] */ __RPC__in_opt IUnknown *pUnknown);
-
-        HRESULT ( STDMETHODCALLTYPE *LockStore )(
-            __RPC__in IMFAttributes * This);
-
-        HRESULT ( STDMETHODCALLTYPE *UnlockStore )(
-            __RPC__in IMFAttributes * This);
-
-        HRESULT ( STDMETHODCALLTYPE *GetCount )(
-            __RPC__in IMFAttributes * This,
-            /* [out] */ __RPC__out UINT32 *pcItems);
-
-        HRESULT ( STDMETHODCALLTYPE *GetItemByIndex )(
-            __RPC__in IMFAttributes * This,
-            UINT32 unIndex,
-            /* [out] */ __RPC__out GUID *pguidKey,
-            /* [full][out][in] */ __RPC__inout_opt PROPVARIANT *pValue);
-
-        HRESULT ( STDMETHODCALLTYPE *CopyAllItems )(
-            __RPC__in IMFAttributes * This,
-            /* [in] */ __RPC__in_opt IMFAttributes *pDest);
-
-        END_INTERFACE
-    } IMFAttributesVtbl;
-
-    interface IMFAttributes
-    {
-        CONST_VTBL struct IMFAttributesVtbl *lpVtbl;
-    };
-
-""")
-
-mmdefapi = ffi.dlopen('MMDevAPI')
-combase = ffi.dlopen('combase')
+mmdevapi = _ffi.dlopen('MMDevAPI')
+combase = _ffi.dlopen('combase')
 
 def str2wstr(string):
-    return ffi.new('int16_t[39]', [ord(s) for s in string]+[0])
+    return _ffi.new('int16_t[]', [ord(s) for s in string]+[0])
 
 def guidof(uuid_str):
-    IID = ffi.new('LPIID')
+    IID = _ffi.new('LPIID')
     # convert to zero terminated wide string
     uuid = str2wstr(uuid_str)
-    hr = combase.IIDFromString(ffi.cast("char*", uuid), IID)
+    hr = combase.IIDFromString(_ffi.cast("char*", uuid), IID)
     check_errors(hr)
     return IID
 
@@ -322,7 +59,7 @@ def check_errors(hr):
                            'IUnknown does not expose the requested '
                            'interface.')
     elif hr+2**32 == E_POINTER:
-        raise RuntimeError('The ppv parameter is NULL.')
+        raise RuntimeError('An argument is NULL.')
     elif hr+2**32 == E_INVALIDARG:
         raise RuntimeError("invalid argument")
     elif hr+2**32 == E_OUTOFMEMORY:
@@ -332,7 +69,7 @@ def check_errors(hr):
 
 def CoInitializeEx():
     COINIT_MULTITHREADED = 0x0
-    hr = combase.CoInitializeEx(ffi.NULL, COINIT_MULTITHREADED)
+    hr = combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
     check_errors(hr)
 
 def CoCreateInstance(rclsid, pUnkOuter, riid, ppv):
@@ -343,30 +80,103 @@ def CoCreateInstance(rclsid, pUnkOuter, riid, ppv):
 
 def DeviceEnumerator_EnumAudioEndpoints(self, dataFlow):
     DEVICE_STATE_ACTIVE = 0x1
-    ppDevices = ffi.new('IMMDeviceCollection **')
-    hr = self[0][0].lpVtbl.EnumAudioEndpoints(self[0], mmdefapi.eRender, DEVICE_STATE_ACTIVE, ppDevices);
+    ppDevices = _ffi.new('IMMDeviceCollection **')
+    hr = self[0][0].lpVtbl.EnumAudioEndpoints(self[0], dataFlow, DEVICE_STATE_ACTIVE, ppDevices);
     check_errors(hr)
     return ppDevices
 
 def DeviceCollection_Item(self, nDevice):
-    ppDevice = ffi.new('IMMDevice **')
+    ppDevice = _ffi.new('IMMDevice **')
     hr = self[0][0].lpVtbl.Item(self[0], nDevice, ppDevice)
     check_errors(hr)
     return ppDevice
 
+def DeviceCollection_GetCount(self):
+    pcDevices = _ffi.new('UINT *')
+    hr = self[0][0].lpVtbl.GetCount(self[0], pcDevices)
+    check_errors(hr)
+    return pcDevices[0]
+
+def Device_GetId(self):
+    ppId = _ffi.new('LPWSTR *')
+    hr = self[0][0].lpVtbl.GetId(self[0], ppId)
+    check_errors(hr)
+    return _ffi.string(ppId[0])
+
+def Device_OpenPropertyStore(self, flags='r'):
+    # um/coml2api.h:
+    STGM_READ = 0x00000000
+    STGM_WRITE = 0x00000001
+    STGM_READWRITE = 0x00000002
+
+    if flags == 'r':
+        bin_flags = STGM_READ
+    elif flags == 'w':
+        bin_flags = STGM_WRITE
+    elif flags == 'rw':
+        bin_flags = STGM_READWRITE
+    else:
+        raise TypeError(f'flags must be "r", "w", or "rw" (is {flags})')
+    ppPropertyStore = _ffi.new('IPropertyStore **')
+    hr = self[0][0].lpVtbl.OpenPropertyStore(self[0], bin_flags, ppPropertyStore)
+    check_errors(hr)
+    return ppPropertyStore
+
+def PropertyStore_GetDeviceName(self):
+    # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
+    PKEY_Device_FriendlyName = _ffi.new("PROPERTYKEY *",
+                                        [[0xa45c254e, 0xdf1c, 0x4efd, [0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0]],
+                                         14])
+    pPropVariant = _ffi.new('PROPVARIANT *')
+    hr = self[0][0].lpVtbl.GetValue(self[0], PKEY_Device_FriendlyName, pPropVariant)
+    check_errors(hr)
+    if pPropVariant[0].vt != 31:
+        raise RuntimeError('Property was expected to be a string, but is not a string')
+    data = _ffi.cast("short*", pPropVariant[0].data)
+    for idx in range(256):
+        if data[idx] == 0:
+            break
+    return ''.join(chr(c) for c in data[0:idx])
+
+def PropertyStore_GetChannels(self):
+    PKEY_AudioEngine_DeviceFormat = _ffi.new("PROPERTYKEY *",
+                                             [[0xf19f064d, 0x82c, 0x4e27, [0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c]],
+                                              0])
+    pPropVariant = _ffi.new('BLOB_PROPVARIANT *')
+    pTmp = _ffi.cast("PROPVARIANT *", pPropVariant)
+    hr = self[0][0].lpVtbl.GetValue(self[0], PKEY_AudioEngine_DeviceFormat, pTmp)
+    check_errors(hr)
+    if pPropVariant[0].vt != 65:
+        raise RuntimeError('Property was expected to be a blob, but is not a blob')
+    assert pPropVariant[0].blob.cbSize == 40
+    waveformat = _ffi.cast("WAVEFORMATEX *", pPropVariant[0].blob.pBlobData)
+    return waveformat[0].nChannels
+
+
 CoInitializeEx()
 
 # Create the device enumerator.
-ppEnum = ffi.new('IMMDeviceEnumerator **')
+ppEnum = _ffi.new('IMMDeviceEnumerator **')
 IID_MMDeviceEnumerator = guidof("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
 IID_IMMDeviceEnumerator = guidof("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
-CoCreateInstance(IID_MMDeviceEnumerator, ffi.NULL,
-                 IID_IMMDeviceEnumerator, ffi.cast("void **", ppEnum))
+CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL,
+                 IID_IMMDeviceEnumerator, _ffi.cast("void **", ppEnum))
 
 # Enumerate the rendering devices.
-ppDevices = DeviceEnumerator_EnumAudioEndpoints(ppEnum, mmdefapi.eRender)
+# https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
+ppDevices = DeviceEnumerator_EnumAudioEndpoints(ppEnum, mmdevapi.eAll)
+# NOTE: use mmdevapi.aRender and mmdevapi.eCapture to search for playback/recording devices
 
 # Get ID of the first device in the list.
-ppDevice = DeviceCollection_Item(ppDevices, 0)
+ndevices = DeviceCollection_GetCount(ppDevices)
+for devidx in range(ndevices):
+    ppDevice = DeviceCollection_Item(ppDevices, devidx)
+    devid = Device_GetId(ppDevice)
+    ppPropertyStore = Device_OpenPropertyStore(ppDevice)
+    devname = PropertyStore_GetDeviceName(ppPropertyStore)
+    channels = PropertyStore_GetChannels(ppPropertyStore)
+    print(f'device {devidx} has name {devname}, {channels} channels and id {devid}')
 
-# Create an attribute store and set the device ID attribute.
+
+# Now I know the device, read further here: https://msdn.microsoft.com/en-us/library/windows/desktop/dd371455(v=vs.85).aspx
+# TODO: Release all the funny data structures I fetch
