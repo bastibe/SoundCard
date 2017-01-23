@@ -2,7 +2,7 @@
 
 Python-Audio is a library for playing and recording audio without resorting to a CPython extension. Instead, it is implemented using the wonderful [CFFI](http://cffi.readthedocs.io/en/latest/) and the native audio libraries of Linux, Windows and macOS.
 
-Python-Audio is meant to be cross-platform, but as of this moment, only a Linux/pulseaudio version has been implemented.
+Python-Audio is meant to be cross-platform, but as of this moment, only a Linux/pulseaudio and the Mac/coreaudio version has been implemented. Work has begun on the Windows/wasapi version, but it is not in a usable state yet.
 
 ## Tutorial
 
@@ -44,4 +44,6 @@ with default_microphone.recorder(samplerate=44100) as mic, default_speaker.playe
         sp.play(data)
 ```
 
-Due to some idiosyncracies of Pulseaudio, `record` will not always return the exact number of samples that were asked. Similarly, while it is possible to specify a block size, Pulseaudio will only honor it approximately.
+Due to some idiosyncracies of Linux/pulseaudio, `record` will not always return the exact number of samples that were asked. Similarly, while it is possible to specify a block size, Linux/pulseaudio will only honor it approximately.
+
+Due to some limitations of Mac/coreaudio, you can not change the samplerate of `record` on a Mac. This will be solved by manually resampling either using coreaudio, or within this library.
