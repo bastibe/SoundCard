@@ -1,6 +1,7 @@
 // see um/winnt.h:
 typedef long HRESULT;
 typedef wchar_t *LPWSTR;
+typedef long long LONGLONG;
 
 // originally, struct=interface, see um/combaseapi.h
 
@@ -161,3 +162,81 @@ typedef struct tWAVEFORMATEX {
     WORD    cbSize;            /* The count in bytes of the size of
                                     extra information (after cbSize) */
 } WAVEFORMATEX;
+
+typedef struct {
+    WAVEFORMATEX Format;
+    union {
+        WORD wValidBitsPerSample;       /* bits of precision  */
+        WORD wSamplesPerBlock;          /* valid if wBitsPerSample==0 */
+        WORD wReserved;                 /* If neither applies, set to zero. */
+    } Samples;
+    DWORD           dwChannelMask;      /* which channels are */
+                                        /* present in stream  */
+    GUID            SubFormat;
+} WAVEFORMATEXTENSIBLE, *PWAVEFORMATEXTENSIBLE;
+
+// um/AudioSessionTypes.h
+typedef enum _AUDCLNT_SHAREMODE
+{
+    AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_SHAREMODE_EXCLUSIVE
+} AUDCLNT_SHAREMODE;
+
+// um/dsound.h
+typedef const GUID *LPCGUID;
+
+// um/Audioclient.h
+typedef LONGLONG REFERENCE_TIME;
+
+typedef struct IAudioClient IAudioClient;
+
+typedef struct IAudioClientVtbl {
+    HRESULT ( __stdcall *QueryInterface )(IAudioClient * This, REFIID riid, void **ppvObject);
+    ULONG ( __stdcall *AddRef )(IAudioClient * This);
+    ULONG ( __stdcall *Release )(IAudioClient * This);
+    HRESULT ( __stdcall *Initialize )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, DWORD StreamFlags, REFERENCE_TIME hnsBufferDuration, REFERENCE_TIME hnsPeriodicity, const WAVEFORMATEX *pFormat, LPCGUID AudioSessionGuid);
+    HRESULT ( __stdcall *GetBufferSize )(IAudioClient * This, UINT32 *pNumBufferFrames);
+    HRESULT ( __stdcall *GetStreamLatency )(IAudioClient * This, REFERENCE_TIME *phnsLatency);
+    HRESULT ( __stdcall *GetCurrentPadding )(IAudioClient * This, UINT32 *pNumPaddingFrames);
+    HRESULT ( __stdcall *IsFormatSupported )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, const WAVEFORMATEX *pFormat, WAVEFORMATEX **ppClosestMatch);
+    HRESULT ( __stdcall *GetMixFormat )(IAudioClient * This, WAVEFORMATEX **ppDeviceFormat);
+    HRESULT ( __stdcall *GetDevicePeriod )(IAudioClient * This, REFERENCE_TIME *phnsDefaultDevicePeriod, REFERENCE_TIME *phnsMinimumDevicePeriod);
+    HRESULT ( __stdcall *Start )(IAudioClient * This);
+    HRESULT ( __stdcall *Stop )(IAudioClient * This);
+    HRESULT ( __stdcall *Reset )(IAudioClient * This);
+    HRESULT ( __stdcall *SetEventHandle )(IAudioClient * This, HANDLE eventHandle);
+    HRESULT ( __stdcall *GetService )(IAudioClient * This, REFIID riid, void **ppv);
+} IAudioClientVtbl;
+
+struct IAudioClient {
+    const struct IAudioClientVtbl *lpVtbl;
+};
+
+typedef struct IAudioRenderClient IAudioRenderClient;
+
+typedef struct IAudioRenderClientVtbl {
+        HRESULT ( __stdcall *QueryInterface )(IAudioRenderClient * This, REFIID riid, void **ppvObject);
+        ULONG ( __stdcall *AddRef )(IAudioRenderClient * This);
+        ULONG ( __stdcall *Release )(IAudioRenderClient * This);
+        HRESULT ( __stdcall *GetBuffer )(IAudioRenderClient * This, UINT32 NumFramesRequested, BYTE **ppData);
+        HRESULT ( __stdcall *ReleaseBuffer )(IAudioRenderClient * This, UINT32 NumFramesWritten, DWORD dwFlags);
+} IAudioRenderClientVtbl;
+
+struct IAudioRenderClient {
+    const struct IAudioRenderClientVtbl *lpVtbl;
+};
+
+typedef struct IAudioCaptureClient IAudioCaptureClient;
+
+typedef struct IAudioCaptureClientVtbl {
+        HRESULT ( __stdcall *QueryInterface )(IAudioCaptureClient * This, REFIID riid, void **ppvObject);
+        ULONG ( __stdcall *AddRef )(IAudioCaptureClient * This);
+        ULONG ( __stdcall *Release )(IAudioCaptureClient * This);
+        HRESULT ( __stdcall *GetBuffer )(IAudioCaptureClient * This, BYTE **ppData, UINT32 *pNumFramesToRead, DWORD *pdwFlags, UINT64 *pu64DevicePosition, UINT64 *pu64QPCPosition);
+        HRESULT ( __stdcall *ReleaseBuffer )(IAudioCaptureClient * This, UINT32 NumFramesRead);
+        HRESULT ( __stdcall *GetNextPacketSize )(IAudioCaptureClient * This, UINT32 *pNumFramesInNextPacket);
+} IAudioCaptureClientVtbl;
+
+struct IAudioCaptureClient {
+        const struct IAudioCaptureClientVtbl *lpVtbl;
+};
