@@ -11,6 +11,7 @@ with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
 
 mmdevapi = _ffi.dlopen('MMDevAPI')
 combase = _ffi.dlopen('combase')
+ole32 = _ffi.dlopen('ole32')
 
 def str2wstr(string):
     return _ffi.new('int16_t[]', [ord(s) for s in string]+[0])
@@ -37,8 +38,8 @@ def check_errors(hr):
     AUDCLNT_E_DEVICE_INVALIDATED = 1<<31 | 2185<<16 | 0x004
     AUDCLNT_E_SERVICE_NOT_RUNNING = 1<<31 | 2185<<16 | 0x010
     AUDCLNT_E_UNSUPPORTED_FORMAT = 1<<31 | 2185<<16 | 0x008
-    if hr == S_OK or hr == S_FALSE:
-        return bool(hr)
+    if hr == S_OK:
+        return
     elif hr+2**32 == RPC_E_CHANGED_MODE:
         raise RuntimeError('A previous call to CoInitializeEx specified '
                            'the concurrency model for this thread as '
@@ -76,10 +77,13 @@ def check_errors(hr):
     else:
         raise RuntimeError('Error {}'.format(hex(hr+2**32)))
 
-def CoInitializeEx():
+def CoInitialize():
     COINIT_MULTITHREADED = 0x0
     hr = combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
     check_errors(hr)
+
+def CoUninitialize():
+    combase.CoUninitialize()
 
 def CoCreateInstance(rclsid, pUnkOuter, riid, ppv):
     # see shared/WTypesbase.h and um/combaseapi.h:
@@ -112,32 +116,59 @@ def Device_GetId(self):
     check_errors(hr)
     return _ffi.string(ppId[0])
 
-def Device_OpenPropertyStore(self, flags='r'):
+def Device_GetName(self):
     # um/coml2api.h:
-    STGM_READ = 0x00000000
-    STGM_WRITE = 0x00000001
-    STGM_READWRITE = 0x00000002
-
-    if flags == 'r':
-        bin_flags = STGM_READ
-    elif flags == 'w':
-        bin_flags = STGM_WRITE
-    elif flags == 'rw':
-        bin_flags = STGM_READWRITE
-    else:
-        raise TypeError(f'flags must be "r", "w", or "rw" (is {flags})')
     ppPropertyStore = _ffi.new('IPropertyStore **')
-    hr = self[0][0].lpVtbl.OpenPropertyStore(self[0], bin_flags, ppPropertyStore)
+    hr = self[0][0].lpVtbl.OpenPropertyStore(self[0], 0, ppPropertyStore)
     check_errors(hr)
-    return ppPropertyStore
+    pPropVariant = combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
+    pPropVariant = _ffi.cast("PROPVARIANT *", pPropVariant)
+    # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
+    PKEY_Device_FriendlyName = _ffi.new("PROPERTYKEY *",
+                                        [[0xa45c254e, 0xdf1c, 0x4efd, [0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0]],
+                                        14])
+    hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_Device_FriendlyName, pPropVariant)
+    check_errors(hr)
+    if pPropVariant[0].vt != 31:
+        raise RuntimeError('Property was expected to be a string, but is not a string')
+    data = _ffi.cast("short*", pPropVariant[0].data)
+    for idx in range(256):
+        if data[idx] == 0:
+            break
+    devicename = ''.join(chr(c) for c in data[0:idx])
+    PropVariantClear(pPropVariant)
+    Release(ppPropertyStore)
+    return devicename
+
+def Device_GetChannels(self):
+    # um/coml2api.h:
+    ppPropertyStore = _ffi.new('IPropertyStore **')
+    hr = self[0][0].lpVtbl.OpenPropertyStore(self[0], 0, ppPropertyStore)
+    check_errors(hr)
+    pPropVariant = combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
+    pPropVariant = _ffi.cast("PROPVARIANT *", pPropVariant)
+    # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
+    PKEY_AudioEngine_DeviceFormat = _ffi.new("PROPERTYKEY *",
+                                             [[0xf19f064d, 0x82c, 0x4e27, [0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c]],
+                                              0])
+    hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_AudioEngine_DeviceFormat, pPropVariant)
+    check_errors(hr)
+    if pPropVariant[0].vt != 65:
+        raise RuntimeError('Property was expected to be a blob, but is not a blob')
+    pPropVariantBlob = _ffi.cast("BLOB_PROPVARIANT *", pPropVariant)
+    assert pPropVariantBlob[0].blob.cbSize == 40
+    waveformat = _ffi.cast("WAVEFORMATEX *", pPropVariantBlob[0].blob.pBlobData)
+    channels = waveformat[0].nChannels
+    PropVariantClear(pPropVariant)
+    Release(ppPropertyStore)
+    return channels
 
 def Device_Activate(self):
     CLSCTX_ALL = 23
-    voidptr = _ffi.new('void **')
+    ppAudioClient = _ffi.new("IAudioClient **")
     IID_IAudioClient = guidof("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}")
-    hr = self[0][0].lpVtbl.Activate(self[0], IID_IAudioClient, CLSCTX_ALL, _ffi.NULL, voidptr)
+    hr = self[0][0].lpVtbl.Activate(self[0], IID_IAudioClient, CLSCTX_ALL, _ffi.NULL, _ffi.cast("void**", ppAudioClient))
     check_errors(hr)
-    ppAudioClient = _ffi.cast('IAudioClient **', voidptr)
     return ppAudioClient
 
 def AudioClient_Initialize(self, samplerate, bufferlength):
@@ -145,6 +176,7 @@ def AudioClient_Initialize(self, samplerate, bufferlength):
     ppMixFormat = _ffi.new('WAVEFORMATEX**')
     hr = self[0][0].lpVtbl.GetMixFormat(self[0], ppMixFormat) # fetch nChannels
     check_errors(hr)
+    channels = ppMixFormat[0][0].nChannels
     ppMixFormat[0][0].wFormatTag = 0x0003 # IEEE float
     ppMixFormat[0][0].wBitsPerSample = 32
     ppMixFormat[0][0].nSamplesPerSec = int(samplerate)
@@ -155,20 +187,21 @@ def AudioClient_Initialize(self, samplerate, bufferlength):
     bufferduration = int(bufferlength * 1000_000_0) # in hecto-nanoseconds
     hr = self[0][0].lpVtbl.Initialize(self[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
     check_errors(hr)
+    combase.CoTaskMemFree(ppMixFormat[0])
 
 def AudioClient_GetService_Render(self):
     iid = guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
-    voidptr = _ffi.new("void **")
-    hr = self[0][0].lpVtbl.GetService(self[0], iid, voidptr)
+    ppRenderClient = _ffi.new("IAudioRenderClient**")
+    hr = self[0][0].lpVtbl.GetService(self[0], iid, _ffi.cast("void**", ppRenderClient))
     check_errors(hr)
-    return _ffi.cast("IAudioRenderClient**", voidptr)
+    return ppRenderClient
 
 def AudioClient_GetService_Capture(self):
     iid = guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
-    voidptr = _ffi.new("void **")
-    hr = self[0][0].lpVtbl.GetService(self[0], iid, voidptr)
+    ppCaptureClient = _ffi.new("IAudioCaptureClient**")
+    hr = self[0][0].lpVtbl.GetService(self[0], iid, _ffi.cast("void**", ppCaptureClient))
     check_errors(hr)
-    return _ffi.cast("IAudioCaptureClient**", voidptr)
+    return ppCaptureClient
 
 def AudioClient_GetBufferSize(self):
     pBufferSize = _ffi.new("UINT32*")
@@ -207,38 +240,15 @@ def RenderClient_ReleaseBuffer(self, numframes):
     hr = self[0][0].lpVtbl.ReleaseBuffer(self[0], numframes, 0)
     check_errors(hr)
 
-def PropertyStore_GetDeviceName(self):
-    # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
-    PKEY_Device_FriendlyName = _ffi.new("PROPERTYKEY *",
-                                        [[0xa45c254e, 0xdf1c, 0x4efd, [0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0]],
-                                         14])
-    pPropVariant = _ffi.new('PROPVARIANT *')
-    hr = self[0][0].lpVtbl.GetValue(self[0], PKEY_Device_FriendlyName, pPropVariant)
+def PropVariantClear(pPropVariant):
+    hr = ole32.PropVariantClear(pPropVariant)
     check_errors(hr)
-    if pPropVariant[0].vt != 31:
-        raise RuntimeError('Property was expected to be a string, but is not a string')
-    data = _ffi.cast("short*", pPropVariant[0].data)
-    for idx in range(256):
-        if data[idx] == 0:
-            break
-    return ''.join(chr(c) for c in data[0:idx])
 
-def PropertyStore_GetChannels(self):
-    PKEY_AudioEngine_DeviceFormat = _ffi.new("PROPERTYKEY *",
-                                             [[0xf19f064d, 0x82c, 0x4e27, [0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c]],
-                                              0])
-    pPropVariant = _ffi.new('BLOB_PROPVARIANT *')
-    pTmp = _ffi.cast("PROPVARIANT *", pPropVariant)
-    hr = self[0][0].lpVtbl.GetValue(self[0], PKEY_AudioEngine_DeviceFormat, pTmp)
-    check_errors(hr)
-    if pPropVariant[0].vt != 65:
-        raise RuntimeError('Property was expected to be a blob, but is not a blob')
-    assert pPropVariant[0].blob.cbSize == 40
-    waveformat = _ffi.cast("WAVEFORMATEX *", pPropVariant[0].blob.pBlobData)
-    return waveformat[0].nChannels
+def Release(self):
+    self[0][0].lpVtbl.Release(self[0])
+    self[0] = _ffi.NULL
 
-
-CoInitializeEx()
+CoInitialize()
 
 # Create the device enumerator.
 ppEnum = _ffi.new('IMMDeviceEnumerator **')
@@ -251,16 +261,17 @@ CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL,
 # https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
 ppDevices = DeviceEnumerator_EnumAudioEndpoints(ppEnum, mmdevapi.eAll)
 # NOTE: use mmdevapi.aRender and mmdevapi.eCapture to search for playback/recording devices
+Release(ppEnum)
 
 # Get ID of the first device in the list.
-# ndevices = DeviceCollection_GetCount(ppDevices)
-# for devidx in range(ndevices):
-#     ppDevice = DeviceCollection_Item(ppDevices, devidx)
-#     devid = Device_GetId(ppDevice)
-#     ppPropertyStore = Device_OpenPropertyStore(ppDevice)
-#     devname = PropertyStore_GetDeviceName(ppPropertyStore)
-#     channels = PropertyStore_GetChannels(ppPropertyStore)
-#     print(f'device {devidx} has name {devname}, {channels} channels and id {devid}')
+ndevices = DeviceCollection_GetCount(ppDevices)
+for devidx in range(ndevices):
+    ppDevice = DeviceCollection_Item(ppDevices, devidx)
+    devid = Device_GetId(ppDevice)
+    devname = Device_GetName(ppDevice)
+    channels = Device_GetChannels(ppDevice)
+    print(f'device {devidx} has name {devname}, {channels} channels and id {devid}')
+    Release(ppDevice)
 
 import numpy as np
 time = np.linspace(0, 1, 48000)
@@ -268,25 +279,35 @@ signal = np.sin(time*1000*2*np.pi)
 stereo_signal = np.tile(signal, [2,1]).T.ravel()
 stereo_noise = np.array(np.random.rand(48000*2)*2-1, 'float32')
 
-# Try playback
 ppDevice = DeviceCollection_Item(ppDevices, 0)
+Release(ppDevices)
+
 ppAudioClient = Device_Activate(ppDevice)
+Release(ppDevice)
+
 AudioClient_Initialize(ppAudioClient, 48000, 1024/48000)
+
 buffersize = AudioClient_GetBufferSize(ppAudioClient)
 print('buffersize', buffersize)
 deviceperiod, minimumperiod = AudioClient_GetDevicePeriod(ppAudioClient)
 print('deviceperiod', deviceperiod, 'minimum', minimumperiod)
+
 ppRenderClient = AudioClient_GetService_Render(ppAudioClient)
+
 buffer = RenderClient_GetBuffer(ppRenderClient, buffersize)
 data = np.ascontiguousarray(stereo_noise[:buffersize*2])
 idx = buffersize*2
 cdata = _ffi.cast("BYTE*", data.__array_interface__['data'][0])
 _ffi.memmove(buffer[0], cdata, buffersize*4*2)
 RenderClient_ReleaseBuffer(ppRenderClient, buffersize)
+
 AudioClient_Start(ppAudioClient)
+
 while idx < len(stereo_noise):
     padding = AudioClient_GetCurrentPadding(ppAudioClient)
     towrite = buffersize-padding
+    if towrite == 0:
+        continue
     buffer = RenderClient_GetBuffer(ppRenderClient, towrite)
     data = np.ascontiguousarray(stereo_noise[idx:idx+towrite*2])
     idx += towrite*2
@@ -294,9 +315,14 @@ while idx < len(stereo_noise):
     _ffi.memmove(buffer[0], cdata, towrite*4*2)
     RenderClient_ReleaseBuffer(ppRenderClient, towrite)
     print(idx)
+
 AudioClient_Stop(ppAudioClient)
+
+Release(ppRenderClient)
+Release(ppAudioClient)
 
 print('done')
 
+CoUninitialize()
 # Now I know the device, read further here: https://msdn.microsoft.com/en-us/library/windows/desktop/dd371455(v=vs.85).aspx
 # TODO: Release all the funny data structures I fetch

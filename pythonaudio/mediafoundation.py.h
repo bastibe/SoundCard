@@ -47,6 +47,9 @@ typedef IID *REFIID;
 HRESULT CoCreateInstance(const GUID* rclsid, LPUNKNOWN pUnkOuter, DWORD dwClsContext, const GUID* riid, LPVOID * ppv);
 HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
 HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
+void CoTaskMemFree(LPVOID pv);
+LPVOID CoTaskMemAlloc(size_t cb);
+void CoUninitialize(void);
 
 // see um/mmdeviceapi.h:
 typedef enum EDataFlow {eRender, eCapture, eAll, EDataFlow_enum_count} EDataFlow;
@@ -100,6 +103,8 @@ struct tag_inner_PROPVARIANT {
     WORD wReserved3;
     void * data;
 };
+void PropVariantInit(PROPVARIANT *p);
+HRESULT PropVariantClear(PROPVARIANT *p);
 
 typedef struct IMMDeviceVtbl {
     HRESULT ( __stdcall *QueryInterface )(IMMDevice * This, REFIID riid, void **ppvObject);
@@ -120,6 +125,9 @@ typedef struct {
   GUID  fmtid;
   DWORD pid;
 } PROPERTYKEY;
+
+const PROPERTYKEY PKEY_Device_FriendlyName = {{0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
+const PROPERTYKEY PKEY_AudioEngine_DeviceFormat = {{0xf19f064d, 0x82c, 0x4e27, {0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c}}, 0};
 
 typedef struct IPropertyStoreVtbl {
     HRESULT ( __stdcall *QueryInterface )(IPropertyStore * This, REFIID riid, void **ppvObject);
