@@ -4,6 +4,10 @@ Python-Audio is a library for playing and recording audio without resorting to a
 
 Python-Audio is cross-platform, and supports Linux/pulseaudio, Mac/coreaudio, and Windows/WASAPI. While the interface is identical across platforms, naming schemes and block sizes can vary between devices and platforms.
 
+Python-Audio is still very early in its development. All major building blocks are in place, but I fully expect there to be bugs and possibly crashes. If you find a bug, please open an Issue, and I will try to fix it. Or open a Pull Request, and I will try to include your fix into Python-Audio.
+
+However, please be aware that this is a hobby project of mine that I am developing for free, and in my spare time. While I try to be as accomodating as possible, I can not guarantee a timely response to issues. Publishing Open Source Software on Github does not imply an obligation to *fix your problem right now*. Please be civil.
+
 ## Tutorial
 
 Here is how you get to your Speakers and Microphones:
@@ -49,3 +53,37 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
 * At the moment, you can not change the samplerate of `record` on macOS/coreaudio yet. This will be implemented in the future.
 * At the moment, macOS/coreaudio does not support searching for a soundcard yet. This will be implemented in the future.
 * At the moment, linux/pulseaudio does not give human-readable soundcard names yet. This will be implemented in the future.
+
+
+## License
+
+Copyright (c) 2016 Bastian Bechtold
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the
+   distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived
+   from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
