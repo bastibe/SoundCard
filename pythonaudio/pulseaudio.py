@@ -86,6 +86,7 @@ def _match_soundcard(id, soundcards):
     raise IndexError('no soundcard with id {}'.format(id))
 
 # TODO: implement name property
+# TODO: implement ID property
 class _Speaker:
     """A soundcard output. Can be used to play audio.
 

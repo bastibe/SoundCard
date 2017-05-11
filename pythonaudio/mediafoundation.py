@@ -10,9 +10,64 @@ _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
-mmdevapi = _ffi.dlopen('MMDevAPI')
-combase = _ffi.dlopen('combase')
-ole32 = _ffi.dlopen('ole32')
+_combase = _ffi.dlopen('combase')
+_ole32 = _ffi.dlopen('ole32')
+
+class _COMLibrary:
+    """General functionality of the COM library.
+
+    This class contains functionality related to the COM library, for:
+    - initializing and uninitializing the library.
+    - checking HRESULT codes.
+    - decrementing the reference count of COM objects.
+
+    """
+
+    def __init__(self):
+        COINIT_MULTITHREADED = 0x0
+        hr = _combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
+        self.check_error(hr)
+
+    def __del__(self):
+        _combase.CoUninitialize()
+
+    @staticmethod
+    def check_error(hresult):
+        """Check a given HRESULT for errors.
+
+        Throws an error for non-S_OK HRESULTs.
+
+        """
+        # see shared/winerror.h:
+        S_OK = 0
+        E_NOINTERFACE = 0x80004002
+        E_POINTER = 0x80004003
+        E_OUTOFMEMORY = 0x8007000e
+        E_INVALIDARG = 0x80070057
+        if hresult == S_OK:
+            return
+        elif hresult+2**32 == E_NOINTERFACE:
+            raise RuntimeError('The specified class does not implement the '
+                               'requested interface, or the controlling '
+                               'IUnknown does not expose the requested '
+                               'interface.')
+        elif hresult+2**32 == E_POINTER:
+            raise RuntimeError('An argument is NULL.')
+        elif hresult+2**32 == E_INVALIDARG:
+            raise RuntimeError("invalid argument")
+        elif hresult+2**32 == E_OUTOFMEMORY:
+            raise RuntimeError("out of memory")
+        else:
+            raise RuntimeError('Error {}'.format(hex(hresult+2**32)))
+
+    @staticmethod
+    def release(ppObject):
+        """Decrement reference count on COM object."""
+        if ppObject[0] != _ffi.NULL:
+            ppObject[0][0].lpVtbl.Release(ppObject[0])
+            ppObject[0] = _ffi.NULL
+
+_com = _COMLibrary()
 
 def all_speakers():
     """A list of all connected speakers."""
@@ -74,135 +129,123 @@ def _match_device(id, devices):
             return device
     raise IndexError('no device with id {}'.format(id))
 
-def str2wstr(string):
+def _str2wstr(string):
+    """Converts a Python str to a Windows WSTR_T."""
     return _ffi.new('int16_t[]', [ord(s) for s in string]+[0])
 
-def guidof(uuid_str):
+def _guidof(uuid_str):
+    """Creates a Windows LPIID from a str."""
     IID = _ffi.new('LPIID')
     # convert to zero terminated wide string
-    uuid = str2wstr(uuid_str)
-    hr = combase.IIDFromString(_ffi.cast("char*", uuid), IID)
-    check_errors(hr)
+    uuid = _str2wstr(uuid_str)
+    hr = _combase.IIDFromString(_ffi.cast("char*", uuid), IID)
+    _com.check_error(hr)
     return IID
 
-def check_errors(hr):
-    # see shared/winerror.h:
-    S_OK = 0
-    E_NOINTERFACE = 0x80004002
-    E_POINTER = 0x80004003
-    E_OUTOFMEMORY = 0x8007000e
-    E_INVALIDARG = 0x80070057
-    if hr == S_OK:
-        return
-    elif hr+2**32 == E_NOINTERFACE:
-        raise RuntimeError('The specified class does not implement the '
-                           'requested interface, or the controlling '
-                           'IUnknown does not expose the requested '
-                           'interface.')
-    elif hr+2**32 == E_POINTER:
-        raise RuntimeError('An argument is NULL.')
-    elif hr+2**32 == E_INVALIDARG:
-        raise RuntimeError("invalid argument")
-    elif hr+2**32 == E_OUTOFMEMORY:
-        raise RuntimeError("out of memory")
-    else:
-        raise RuntimeError('Error {}'.format(hex(hr+2**32)))
-
-def PropVariantClear(pPropVariant):
-    hr = ole32.PropVariantClear(pPropVariant)
-    check_errors(hr)
-
-def Release(ptrptr):
-    if ptrptr[0] != _ffi.NULL:
-        ptrptr[0][0].lpVtbl.Release(ptrptr[0])
-        ptrptr[0] = _ffi.NULL
-
-def CoInitialize():
-    COINIT_MULTITHREADED = 0x0
-    hr = combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
-    check_errors(hr)
-
-def CoUninitialize():
-    combase.CoUninitialize()
-
 class _DeviceEnumerator:
+    """Wrapper class for an IMMDeviceEnumerator**.
+
+    Provides methods for retrieving _Devices and pointers to the
+    underlying IMMDevices.
+
+    """
+
     def __init__(self):
         self._ptr = _ffi.new('IMMDeviceEnumerator **')
-        IID_MMDeviceEnumerator = guidof("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
-        IID_IMMDeviceEnumerator = guidof("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+        IID_MMDeviceEnumerator = _guidof("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
+        IID_IMMDeviceEnumerator = _guidof("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
         # see shared/WTypesbase.h and um/combaseapi.h:
         CLSCTX_ALL = 23
-        hr = combase.CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL, CLSCTX_ALL,
+        hr = _combase.CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL, CLSCTX_ALL,
                                   IID_IMMDeviceEnumerator, _ffi.cast("void **", self._ptr))
-        check_errors(hr)
+        _com.check_error(hr)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        Release(self._ptr)
+        _com.release(self._ptr)
 
     def __del__(self):
-        Release(self._ptr)
+        _com.release(self._ptr)
 
     def _device_id(self, device_ptr):
+        """Returns the WASAPI device ID for an IMMDevice**."""
         ppId = _ffi.new('LPWSTR *')
         hr = device_ptr[0][0].lpVtbl.GetId(device_ptr[0], ppId)
-        check_errors(hr)
+        _com.check_error(hr)
         return _ffi.string(ppId[0])
 
     def all_devices(self, kind):
+        """Yields all sound cards of a given kind.
+
+        Kind may be 'speaker' or 'microphone'.
+        Sound cards are returned as _Device objects.
+
+        """
         if kind == 'speaker':
-            data_flow = mmdevapi.eRender
+            data_flow = 0 # render
         elif kind == 'microphone':
-            data_flow = mmdevapi.eCapture
+            data_flow = 1 # capture
         else:
             raise TypeError(f'Invalid kind: {kind}')
 
         DEVICE_STATE_ACTIVE = 0x1
         ppDevices = _ffi.new('IMMDeviceCollection **')
         hr = self._ptr[0][0].lpVtbl.EnumAudioEndpoints(self._ptr[0], data_flow, DEVICE_STATE_ACTIVE, ppDevices);
-        check_errors(hr)
+        _com.check_error(hr)
 
         for ppDevice in _DeviceCollection(ppDevices):
             device = _Device(self._device_id(ppDevice))
-            Release(ppDevice)
+            _com.release(ppDevice)
             yield device
 
     def default_device(self, kind):
+        """Returns the default sound card of a given kind.
+
+        Kind may be 'speaker' or 'microphone'.
+        Default sound card is returned as a _Device object.
+
+        """
         if kind == 'speaker':
-            data_flow = mmdevapi.eRender
+            data_flow = 0 # render
         elif kind == 'microphone':
-            data_flow = mmdevapi.eCapture
+            data_flow = 1 # capture
         else:
             raise TypeError(f'Invalid kind: {kind}')
 
         ppDevice = _ffi.new('IMMDevice **')
         eConsole = 0
         hr = self._ptr[0][0].lpVtbl.GetDefaultAudioEndpoint(self._ptr[0], data_flow, eConsole, ppDevice);
-        check_errors(hr)
+        _com.check_error(hr)
         device = _Device(self._device_id(ppDevice))
-        Release(ppDevice)
+        _com.release(ppDevice)
         return device
 
     def device_ptr(self, devid):
+        """Retrieve IMMDevice** for a WASAPI device ID."""
         ppDevice = _ffi.new('IMMDevice **')
-        devid = str2wstr(devid)
+        devid = _str2wstr(devid)
         hr = self._ptr[0][0].lpVtbl.GetDevice(self._ptr[0], _ffi.cast('wchar_t *', devid), ppDevice);
-        check_errors(hr)
+        _com.check_error(hr)
         return ppDevice
 
 class _DeviceCollection:
+    """Wrapper class for an IMMDeviceCollection**.
+
+    Generator for IMMDevice** pointers.
+
+    """
     def __init__(self, ptr):
         self._ptr = ptr
 
     def __del__(self):
-        Release(self._ptr)
+        _com.release(self._ptr)
 
     def __len__(self):
         pCount = _ffi.new('UINT *')
         hr = self._ptr[0][0].lpVtbl.GetCount(self._ptr[0], pCount)
-        check_errors(hr)
+        _com.check_error(hr)
         return pCount[0]
 
     def __getitem__(self, idx):
@@ -210,10 +253,37 @@ class _DeviceCollection:
             raise StopIteration()
         ppDevice = _ffi.new('IMMDevice **')
         hr = self._ptr[0][0].lpVtbl.Item(self._ptr[0], idx, ppDevice)
-        check_errors(hr)
+        _com.check_error(hr)
         return ppDevice
 
+class _PropVariant:
+    """Wrapper class for a PROPVARIANT.
+
+    Correctly allocates and frees a PROPVARIANT. Normal CFFI
+    malloc/free is incompatible with PROPVARIANTs, since COM expects
+    PROPVARIANTS to be freely reallocatable by its own allocator.
+
+    Access the PROPVARIANT* pointer using .ptr.
+
+    """
+    def __init__(self):
+        self.ptr = _combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
+        self.ptr = _ffi.cast("PROPVARIANT *", self.ptr)
+
+    def __del__(self):
+        hr = _ole32.PropVariantClear(self.ptr)
+        _com.check_error(hr)
+
 class _Device:
+    """Wrapper class for an IMMDevice.
+
+    Implements memory management and retrieval of the device name, the
+    number of channels, and device activation.
+
+    Subclassed by _Speaker and _Microphone for playback and recording.
+
+    """
+
     def __init__(self, id):
         self._id = id
 
@@ -231,25 +301,23 @@ class _Device:
         ppPropertyStore = _ffi.new('IPropertyStore **')
         ptr = self._device_ptr()
         hr = ptr[0][0].lpVtbl.OpenPropertyStore(ptr[0], 0, ppPropertyStore)
-        Release(ptr)
-        check_errors(hr)
-        pPropVariant = combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
-        pPropVariant = _ffi.cast("PROPVARIANT *", pPropVariant)
+        _com.release(ptr)
+        _com.check_error(hr)
+        propvariant = _PropVariant()
         # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
         PKEY_Device_FriendlyName = _ffi.new("PROPERTYKEY *",
                                             [[0xa45c254e, 0xdf1c, 0x4efd, [0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0]],
                                             14])
-        hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_Device_FriendlyName, pPropVariant)
-        check_errors(hr)
-        if pPropVariant[0].vt != 31:
+        hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_Device_FriendlyName, propvariant.ptr)
+        _com.check_error(hr)
+        if propvariant.ptr[0].vt != 31:
             raise RuntimeError('Property was expected to be a string, but is not a string')
-        data = _ffi.cast("short*", pPropVariant[0].data)
+        data = _ffi.cast("short*", propvariant.ptr[0].data)
         for idx in range(256):
             if data[idx] == 0:
                 break
         devicename = ''.join(chr(c) for c in data[0:idx])
-        PropVariantClear(pPropVariant)
-        Release(ppPropertyStore)
+        _com.release(ppPropertyStore)
         return devicename
 
     @property
@@ -258,37 +326,48 @@ class _Device:
         ppPropertyStore = _ffi.new('IPropertyStore **')
         ptr = self._device_ptr()
         hr = ptr[0][0].lpVtbl.OpenPropertyStore(ptr[0], 0, ppPropertyStore)
-        Release(ptr)
-        check_errors(hr)
-        pPropVariant = combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
-        pPropVariant = _ffi.cast("PROPVARIANT *", pPropVariant)
+        _com.release(ptr)
+        _com.check_error(hr)
+        propvariant = _PropVariant()
         # um/functiondiscoverykeys_devpkey.h and https://msdn.microsoft.com/en-us/library/windows/desktop/dd370812(v=vs.85).aspx
         PKEY_AudioEngine_DeviceFormat = _ffi.new("PROPERTYKEY *",
                                                  [[0xf19f064d, 0x82c, 0x4e27, [0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c]],
                                                   0])
-        hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_AudioEngine_DeviceFormat, pPropVariant)
-        Release(ppPropertyStore)
-        check_errors(hr)
-        if pPropVariant[0].vt != 65:
+        hr = ppPropertyStore[0][0].lpVtbl.GetValue(ppPropertyStore[0], PKEY_AudioEngine_DeviceFormat, propvariant.ptr)
+        _com.release(ppPropertyStore)
+        _com.check_error(hr)
+        if propvariant.ptr[0].vt != 65:
             raise RuntimeError('Property was expected to be a blob, but is not a blob')
-        pPropVariantBlob = _ffi.cast("BLOB_PROPVARIANT *", pPropVariant)
+        pPropVariantBlob = _ffi.cast("BLOB_PROPVARIANT *", propvariant.ptr)
         assert pPropVariantBlob[0].blob.cbSize == 40
         waveformat = _ffi.cast("WAVEFORMATEX *", pPropVariantBlob[0].blob.pBlobData)
         channels = waveformat[0].nChannels
-        PropVariantClear(pPropVariant)
         return channels
 
-    def _audioClient(self):
+    def _audio_client(self):
         CLSCTX_ALL = 23
         ppAudioClient = _ffi.new("IAudioClient **")
-        IID_IAudioClient = guidof("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}")
+        IID_IAudioClient = _guidof("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}")
         ptr = self._device_ptr()
         hr = ptr[0][0].lpVtbl.Activate(ptr[0], IID_IAudioClient, CLSCTX_ALL, _ffi.NULL, _ffi.cast("void**", ppAudioClient))
-        Release(ptr)
-        check_errors(hr)
+        _com.release(ptr)
+        _com.check_error(hr)
         return ppAudioClient
 
 class _Speaker(_Device):
+    """A soundcard output. Can be used to play audio.
+
+    Use the `play` method to play one piece of audio, or use the
+    `player` method to get a context manager for playing continuous
+    audio.
+
+    Properties:
+    - `channels`: the number of available channels.
+    - `name`: the name of the sound card.
+    - `id`: the WASAPI ID of the sound card.
+
+    """
+
     def __init__(self, device):
         self._id = device._id
 
@@ -296,13 +375,26 @@ class _Speaker(_Device):
         return f'<Speaker {self.name} ({self.channels} channels)>'
 
     def player(self, samplerate, blocksize=None):
-        return _Player(self._audioClient(), samplerate, blocksize)
+        return _Player(self._audio_client(), samplerate, blocksize)
 
     def play(self, data, samplerate):
         with self.player(samplerate) as p:
             p.play(data)
 
 class _Microphone(_Device):
+    """A soundcard input. Can be used to record audio.
+
+    Use the `record` method to record one piece of audio, or use the
+    `recorder` method to get a context manager for recording
+    continuous audio.
+
+    Properties:
+    - `channels`: the number of available channels.
+    - `name`: the name of the sound card.
+    - `id`: the WASAPI ID of the sound card.
+
+    """
+
     def __init__(self, device):
         self._id = device._id
 
@@ -310,13 +402,22 @@ class _Microphone(_Device):
         return f'<Microphone {self.name} ({self.channels} channels)>'
 
     def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._audioClient(), samplerate, blocksize)
+        return _Recorder(self._audio_client(), samplerate, blocksize)
 
     def record(self, samplerate, length):
         with self.recorder(samplerate) as r:
             return r.record(length)
 
 class _AudioClient:
+    """Wrapper class for an IAudioClient** object.
+
+    Implements memory management and various property retrieval for
+    IAudioClient objects.
+
+    Subclassed by _Player and _Recorder for playback and recording.
+
+    """
+
     def __init__(self, ptr, samplerate, blocksize):
         self._ptr = ptr
         if blocksize is None:
@@ -324,7 +425,7 @@ class _AudioClient:
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 # rate-adjust | auto-convert-PCM | SRC-default-quality The
         ppMixFormat = _ffi.new('WAVEFORMATEX**')
         hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat) # fetch nChannels
-        check_errors(hr)
+        _com.check_error(hr)
         self.channels = ppMixFormat[0][0].nChannels
         ppMixFormat[0][0].wFormatTag = 0x0003 # IEEE float
         ppMixFormat[0][0].wBitsPerSample = 32
@@ -335,14 +436,14 @@ class _AudioClient:
         sharemode = 0 # shared (um/AudioSessionTypes:33)
         bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
-        check_errors(hr)
-        combase.CoTaskMemFree(ppMixFormat[0])
+        _com.check_error(hr)
+        _combase.CoTaskMemFree(ppMixFormat[0])
 
     @property
     def buffersize(self):
         pBufferSize = _ffi.new("UINT32*")
         hr = self._ptr[0][0].lpVtbl.GetBufferSize(self._ptr[0], pBufferSize)
-        check_errors(hr)
+        _com.check_error(hr)
         return pBufferSize[0]
 
     @property
@@ -350,34 +451,46 @@ class _AudioClient:
         pDefaultPeriod = _ffi.new("REFERENCE_TIME*")
         pMinimumPeriod = _ffi.new("REFERENCE_TIME*")
         hr = self._ptr[0][0].lpVtbl.GetDevicePeriod(self._ptr[0], pDefaultPeriod, pMinimumPeriod)
-        check_errors(hr)
+        _com.check_error(hr)
         return pDefaultPeriod[0]/1000_000_0, pMinimumPeriod[0]/1000_000_0
 
     @property
     def currentpadding(self):
         pPadding = _ffi.new("UINT32*")
         hr = self._ptr[0][0].lpVtbl.GetCurrentPadding(self._ptr[0], pPadding)
-        check_errors(hr)
+        _com.check_error(hr)
         return pPadding[0]
 
 class _Player(_AudioClient):
+    """A context manager for an active output stream.
+
+    Audio playback is available as soon as the context manager is
+    entered. Audio data can be played using the `play` method.
+    Successive calls to `play` will queue up the audio one piece after
+    another. If no audio is queued up, this will play silence.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
+
     # https://msdn.microsoft.com/en-us/library/windows/desktop/dd316756(v=vs.85).aspx
     def _render_client(self):
-        iid = guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
+        iid = _guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
         ppRenderClient = _ffi.new("IAudioRenderClient**")
         hr = self._ptr[0][0].lpVtbl.GetService(self._ptr[0], iid, _ffi.cast("void**", ppRenderClient))
-        check_errors(hr)
+        _com.check_error(hr)
         return ppRenderClient
 
     def _render_buffer(self, numframes):
         data = _ffi.new("BYTE**")
         hr = self._ppRenderClient[0][0].lpVtbl.GetBuffer(self._ppRenderClient[0], numframes, data)
-        check_errors(hr)
+        _com.check_error(hr)
         return data
 
     def _render_release(self, numframes):
         hr = self._ppRenderClient[0][0].lpVtbl.ReleaseBuffer(self._ppRenderClient[0], numframes, 0)
-        check_errors(hr)
+        _com.check_error(hr)
 
     def _render_available_frames(self):
         return self.buffersize-self.currentpadding
@@ -385,15 +498,34 @@ class _Player(_AudioClient):
     def __enter__(self):
         self._ppRenderClient = self._render_client()
         hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
-        check_errors(hr)
+        _com.check_error(hr)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
-        check_errors(hr)
-        Release(self._ppRenderClient)
+        _com.check_error(hr)
+        _com.release(self._ppRenderClient)
 
     def play(self, data):
+        """Play some audio data.
+
+        Internally, all data is handled as float32 and with the
+        appropriate number of channels. For maximum performance,
+        provide data as a `frames x channels` float32 numpy array.
+
+        If single-channel or one-dimensional data is given, this data
+        will be played on all available channels.
+
+        This function will return *before* all data has been played,
+        so that additional data can be provided for gapless playback.
+        The amount of buffering can be controlled through the
+        blocksize of the player object.
+
+        If data is provided faster than it is played, later pieces
+        will be queued up and played one after another.
+
+        """
+
         data = numpy.array(data, dtype='float32')
         if data.ndim == 1:
             data = data[:, None] # force 2d
@@ -416,12 +548,24 @@ class _Player(_AudioClient):
             data = data[towrite:]
 
 class _Recorder(_AudioClient):
+    """A context manager for an active input stream.
+
+    Audio recording is available as soon as the context manager is
+    entered. Recorded audio data can be read using the `record`
+    method. If no audio data is available, `record` will block until
+    the requested amount of audio data has been recorded.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
+
     # https://msdn.microsoft.com/en-us/library/windows/desktop/dd370800(v=vs.85).aspx
     def _capture_client(self):
-        iid = guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
+        iid = _guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
         ppCaptureClient = _ffi.new("IAudioCaptureClient**")
         hr = self._ptr[0][0].lpVtbl.GetService(self._ptr[0], iid, _ffi.cast("void**", ppCaptureClient))
-        check_errors(hr)
+        _com.check_error(hr)
         return ppCaptureClient
 
     def _capture_buffer(self):
@@ -429,31 +573,45 @@ class _Recorder(_AudioClient):
         toread = _ffi.new('UINT32*')
         flags = _ffi.new('DWORD*')
         hr = self._ppCaptureClient[0][0].lpVtbl.GetBuffer(self._ppCaptureClient[0], data, toread, flags, _ffi.NULL, _ffi.NULL)
-        check_errors(hr)
+        _com.check_error(hr)
         return data[0], toread[0], flags[0]
 
     def _capture_release(self, numframes):
         hr = self._ppCaptureClient[0][0].lpVtbl.ReleaseBuffer(self._ppCaptureClient[0], numframes)
-        check_errors(hr)
+        _com.check_error(hr)
 
     def _capture_available_frames(self):
         pSize = _ffi.new("UINT32*")
         hr = self._ppCaptureClient[0][0].lpVtbl.GetNextPacketSize(self._ppCaptureClient[0], pSize)
-        check_errors(hr)
+        _com.check_error(hr)
         return pSize[0]
 
     def __enter__(self):
         self._ppCaptureClient = self._capture_client()
         hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
-        check_errors(hr)
+        _com.check_error(hr)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
-        check_errors(hr)
-        Release(self._ppCaptureClient)
+        _com.check_error(hr)
+        _com.release(self._ppCaptureClient)
 
     def record(self, num_frames):
+        """Record some audio data.
+
+        The data will be returned as a `frames x channels` float32
+        numpy array.
+
+        This function will wait until `num_frames` frames have been
+        recorded. However, the audio backend holds the final authority
+        over how much audio data can be read at a time, so the
+        returned amount of data will often be slightly larger than
+        what was requested. The amount of buffering can be controlled
+        through the blocksize of the recorder object.
+
+        """
+
         captured_frames = 0
         captured_data = []
         while captured_frames < num_frames:
@@ -469,8 +627,3 @@ class _Recorder(_AudioClient):
             else:
                 time.sleep(0.001)
         return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
-
-CoInitialize()
-
-import atexit
-atexit.register(CoUninitialize)
