@@ -298,7 +298,7 @@ class _Device:
         PropVariantClear(pPropVariant)
         return channels
 
-    def activate(self):
+    def _audioClient(self):
         CLSCTX_ALL = 23
         ppAudioClient = _ffi.new("IAudioClient **")
         IID_IAudioClient = guidof("{1CB9AD4C-DBFA-4C32-B178-C2F568A703B2}")
@@ -315,6 +315,13 @@ class _Speaker(_Device):
     def __repr__(self):
         return f'<Speaker {self.name} ({self.channels} channels)>'
 
+    def player(self, samplerate, blocksize=None):
+        return _Player(self._audioClient(), samplerate, blocksize)
+
+    def play(self, data, samplerate):
+        with self.player(samplerate) as p:
+            p.play(data)
+
 class _Microphone(_Device):
     def __init__(self, device):
         self._id = device._id
@@ -322,30 +329,107 @@ class _Microphone(_Device):
     def __repr__(self):
         return f'<Microphone {self.name} ({self.channels} channels)>'
 
-def AudioClient_Initialize(self, samplerate, bufferlength):
-    streamflags = 0x00100000 | 0x80000000 | 0x08000000 # rate-adjust | auto-convert-PCM | SRC-default-quality The
-    ppMixFormat = _ffi.new('WAVEFORMATEX**')
-    hr = self[0][0].lpVtbl.GetMixFormat(self[0], ppMixFormat) # fetch nChannels
-    check_errors(hr)
-    channels = ppMixFormat[0][0].nChannels
-    ppMixFormat[0][0].wFormatTag = 0x0003 # IEEE float
-    ppMixFormat[0][0].wBitsPerSample = 32
-    ppMixFormat[0][0].nSamplesPerSec = int(samplerate)
-    ppMixFormat[0][0].nBlockAlign = ppMixFormat[0][0].nChannels * ppMixFormat[0][0].wBitsPerSample // 8
-    ppMixFormat[0][0].nAvgBytesPerSec = ppMixFormat[0][0].nSamplesPerSec * ppMixFormat[0][0].nBlockAlign
-    ppMixFormat[0][0].cbSize = 0
-    sharemode = 0 # shared (um/AudioSessionTypes:33)
-    bufferduration = int(bufferlength * 1000_000_0) # in hecto-nanoseconds
-    hr = self[0][0].lpVtbl.Initialize(self[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
-    check_errors(hr)
-    combase.CoTaskMemFree(ppMixFormat[0])
+    def recorder(self, samplerate, blocksize=None):
+        pass
 
-def AudioClient_GetService_Render(self):
-    iid = guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
-    ppRenderClient = _ffi.new("IAudioRenderClient**")
-    hr = self[0][0].lpVtbl.GetService(self[0], iid, _ffi.cast("void**", ppRenderClient))
-    check_errors(hr)
-    return ppRenderClient
+    def record(self, samplerate, length):
+        pass
+
+class _AudioClient:
+    def __init__(self, ptr, samplerate, blocksize):
+        self._ptr = ptr
+        if blocksize is None:
+            blocksize = self.deviceperiod[0]*samplerate
+        streamflags = 0x00100000 | 0x80000000 | 0x08000000 # rate-adjust | auto-convert-PCM | SRC-default-quality The
+        ppMixFormat = _ffi.new('WAVEFORMATEX**')
+        hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat) # fetch nChannels
+        check_errors(hr)
+        self.channels = ppMixFormat[0][0].nChannels
+        ppMixFormat[0][0].wFormatTag = 0x0003 # IEEE float
+        ppMixFormat[0][0].wBitsPerSample = 32
+        ppMixFormat[0][0].nSamplesPerSec = int(samplerate)
+        ppMixFormat[0][0].nBlockAlign = ppMixFormat[0][0].nChannels * ppMixFormat[0][0].wBitsPerSample // 8
+        ppMixFormat[0][0].nAvgBytesPerSec = ppMixFormat[0][0].nSamplesPerSec * ppMixFormat[0][0].nBlockAlign
+        ppMixFormat[0][0].cbSize = 0
+        sharemode = 0 # shared (um/AudioSessionTypes:33)
+        bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
+        hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
+        check_errors(hr)
+        combase.CoTaskMemFree(ppMixFormat[0])
+
+    @property
+    def buffersize(self):
+        pBufferSize = _ffi.new("UINT32*")
+        hr = self._ptr[0][0].lpVtbl.GetBufferSize(self._ptr[0], pBufferSize)
+        check_errors(hr)
+        return pBufferSize[0]
+
+    @property
+    def deviceperiod(self):
+        pDefaultPeriod = _ffi.new("REFERENCE_TIME*")
+        pMinimumPeriod = _ffi.new("REFERENCE_TIME*")
+        hr = self._ptr[0][0].lpVtbl.GetDevicePeriod(self._ptr[0], pDefaultPeriod, pMinimumPeriod)
+        check_errors(hr)
+        return pDefaultPeriod[0]/1000_000_0, pMinimumPeriod[0]/1000_000_0
+
+    @property
+    def currentpadding(self):
+        pPadding = _ffi.new("UINT32*")
+        hr = self._ptr[0][0].lpVtbl.GetCurrentPadding(self._ptr[0], pPadding)
+        check_errors(hr)
+        return pPadding[0]
+
+class _Player(_AudioClient):
+
+    def _render_client(self):
+        iid = guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
+        ppRenderClient = _ffi.new("IAudioRenderClient**")
+        hr = self._ptr[0][0].lpVtbl.GetService(self._ptr[0], iid, _ffi.cast("void**", ppRenderClient))
+        check_errors(hr)
+        return ppRenderClient
+
+    def _render_buffer(self, numframes):
+        data = _ffi.new("BYTE**")
+        hr = self._ppRenderClient[0][0].lpVtbl.GetBuffer(self._ppRenderClient[0], numframes, data)
+        check_errors(hr)
+        return data
+
+    def _render_release(self, numframes):
+        hr = self._ppRenderClient[0][0].lpVtbl.ReleaseBuffer(self._ppRenderClient[0], numframes, 0)
+        check_errors(hr)
+
+    def __enter__(self):
+        self._ppRenderClient = self._render_client()
+        hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
+        check_errors(hr)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
+        check_errors(hr)
+        Release(self._ppRenderClient)
+
+    def play(self, data):
+        data = numpy.array(data, dtype='float32')
+        if data.ndim == 1:
+            data = data[:, None] # force 2d
+        if data.ndim != 2:
+            raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
+        if data.shape[1] == 1 and self.channels != 1:
+            data = numpy.tile(data, [1, self.channels])
+        if data.shape[1] != self.channels:
+            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
+
+        while data.nbytes > 0:
+            towrite = self.buffersize-self.currentpadding
+            if towrite == 0:
+                time.sleep(0.001)
+                continue
+            bytes = data[:towrite].ravel().tostring()
+            buffer = self._render_buffer(towrite)
+            _ffi.memmove(buffer[0], bytes, len(bytes))
+            self._render_release(towrite)
+            data = data[towrite:]
 
 def AudioClient_GetService_Capture(self):
     iid = guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
@@ -353,43 +437,6 @@ def AudioClient_GetService_Capture(self):
     hr = self[0][0].lpVtbl.GetService(self[0], iid, _ffi.cast("void**", ppCaptureClient))
     check_errors(hr)
     return ppCaptureClient
-
-def AudioClient_GetBufferSize(self):
-    pBufferSize = _ffi.new("UINT32*")
-    hr = self[0][0].lpVtbl.GetBufferSize(self[0], pBufferSize)
-    check_errors(hr)
-    return pBufferSize[0]
-
-def AudioClient_GetDevicePeriod(self):
-    pDefaultPeriod = _ffi.new("REFERENCE_TIME*")
-    pMinimumPeriod = _ffi.new("REFERENCE_TIME*")
-    hr = self[0][0].lpVtbl.GetDevicePeriod(self[0], pDefaultPeriod, pMinimumPeriod)
-    check_errors(hr)
-    return pDefaultPeriod[0], pMinimumPeriod[0]
-
-def AudioClient_GetCurrentPadding(self):
-    pPadding = _ffi.new("UINT32*")
-    hr = self[0][0].lpVtbl.GetCurrentPadding(self[0], pPadding)
-    check_errors(hr)
-    return pPadding[0]
-
-def AudioClient_Start(self):
-    hr = self[0][0].lpVtbl.Start(self[0])
-    check_errors(hr)
-
-def AudioClient_Stop(self):
-    hr = self[0][0].lpVtbl.Stop(self[0])
-    check_errors(hr)
-
-def RenderClient_GetBuffer(self, numframes):
-    data = _ffi.new("BYTE**")
-    hr = self[0][0].lpVtbl.GetBuffer(self[0], numframes, data)
-    check_errors(hr)
-    return data
-
-def RenderClient_ReleaseBuffer(self, numframes):
-    hr = self[0][0].lpVtbl.ReleaseBuffer(self[0], numframes, 0)
-    check_errors(hr)
 
 def PropVariantClear(pPropVariant):
     hr = ole32.PropVariantClear(pPropVariant)
@@ -411,56 +458,12 @@ print('default microphone:', default_microphone())
 print('a speaker:', get_speaker('Lautsprecher'))
 print('a microphone:', get_microphone('Mikrofon'))
 
-import numpy as np
-time = np.linspace(0, 1, 48000)
-signal = np.sin(time*1000*2*np.pi)
-stereo_signal = np.tile(signal, [2,1]).T.ravel()
-stereo_signal = np.array(stereo_signal, 'float32')
-# stereo_signal = np.array(np.random.rand(48000*2)*2-1, 'float32')
+import numpy
+import time
+t = numpy.linspace(0, 1, 48000)
+signal = numpy.sin(t*1000*2*numpy.pi)
+stereo_signal = numpy.tile(signal, [2,1]).T.ravel()
+stereo_signal = numpy.array(stereo_signal, 'float32')
+# stereo_signal = numpy.array(numpy.random.rand(48000*2)*2-1, 'float32')
 
-# ppDevice = DeviceCollection_Item(ppDevices, 0)
-# Release(ppDevices)
-
-# ppAudioClient = Device_Activate(ppDevice)
-# Release(ppDevice)
-
-# AudioClient_Initialize(ppAudioClient, 48000, 1024/48000)
-
-# buffersize = AudioClient_GetBufferSize(ppAudioClient)
-# print('buffersize', buffersize)
-# deviceperiod, minimumperiod = AudioClient_GetDevicePeriod(ppAudioClient)
-# print('deviceperiod', deviceperiod, 'minimum', minimumperiod)
-
-# ppRenderClient = AudioClient_GetService_Render(ppAudioClient)
-
-# buffer = RenderClient_GetBuffer(ppRenderClient, buffersize)
-# data = np.ascontiguousarray(stereo_signal[:buffersize*2])
-# idx = buffersize*2
-# cdata = _ffi.cast("BYTE*", data.__array_interface__['data'][0])
-# _ffi.memmove(buffer[0], cdata, buffersize*4*2)
-# RenderClient_ReleaseBuffer(ppRenderClient, buffersize)
-
-# AudioClient_Start(ppAudioClient)
-
-# while idx < len(stereo_signal):
-#     padding = AudioClient_GetCurrentPadding(ppAudioClient)
-#     towrite = buffersize-padding
-#     if towrite == 0:
-#         continue
-#     buffer = RenderClient_GetBuffer(ppRenderClient, towrite)
-#     data = np.ascontiguousarray(stereo_signal[idx:idx+towrite*2])
-#     idx += towrite*2
-#     cdata = _ffi.cast("BYTE*", data.__array_interface__['data'][0])
-#     _ffi.memmove(buffer[0], cdata, towrite*4*2)
-#     RenderClient_ReleaseBuffer(ppRenderClient, towrite)
-#     print(f"\r{towrite}, {idx/len(stereo_signal):4.2f}", end="")
-
-# AudioClient_Stop(ppAudioClient)
-
-# Release(ppRenderClient)
-# Release(ppAudioClient)
-
-# print('\ndone')
-
-# Now I know the device, read further here: https://msdn.microsoft.com/en-us/library/windows/desktop/dd371455(v=vs.85).aspx
-# TODO: Release all the funny data structures I fetch
+default_speaker().play(stereo_signal, 48000)
