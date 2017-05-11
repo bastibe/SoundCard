@@ -2,7 +2,8 @@
 
 import os
 import cffi
-import numpy as np
+import numpy
+import time
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -87,36 +88,12 @@ def guidof(uuid_str):
 def check_errors(hr):
     # see shared/winerror.h:
     S_OK = 0
-    S_FALSE = 1
-    RPC_E_CHANGED_MODE = 0x80010106
-    REGDB_E_CLASSNOTREG = 0x80040154
-    CLASS_E_NOAGGREGATION = 0x80040110
     E_NOINTERFACE = 0x80004002
     E_POINTER = 0x80004003
     E_OUTOFMEMORY = 0x8007000e
     E_INVALIDARG = 0x80070057
-    AUDCLNT_E_DEVICE_INVALIDATED = 1<<31 | 2185<<16 | 0x004
-    AUDCLNT_E_SERVICE_NOT_RUNNING = 1<<31 | 2185<<16 | 0x010
-    AUDCLNT_E_UNSUPPORTED_FORMAT = 1<<31 | 2185<<16 | 0x008
     if hr == S_OK:
         return
-    elif hr+2**32 == RPC_E_CHANGED_MODE:
-        raise RuntimeError('A previous call to CoInitializeEx specified '
-                           'the concurrency model for this thread as '
-                           'multithread apartment (MTA). This could also '
-                           'indicate that a change from neutral-threaded '
-                           'apartment to single-threaded apartment '
-                           'has occurred.')
-    elif hr+2**23 == REGDB_E_CLASSNOTREG:
-        raise RuntimeError('A specified class is not registered in the '
-                           'registration database. Also can indicate '
-                           'that the type of' 'server you requested in '
-                           'the CLSCTX enumeration is not registered or '
-                           'the values for the server types in the '
-                           'registry are corrupt.')
-    elif hr+2**32 == CLASS_E_NOAGGREGATION:
-        raise RuntimeError('This class cannot be created as part of an '
-                           'aggregate.')
     elif hr+2**32 == E_NOINTERFACE:
         raise RuntimeError('The specified class does not implement the '
                            'requested interface, or the controlling '
@@ -128,14 +105,17 @@ def check_errors(hr):
         raise RuntimeError("invalid argument")
     elif hr+2**32 == E_OUTOFMEMORY:
         raise RuntimeError("out of memory")
-    elif hr+2**32 == AUDCLNT_E_DEVICE_INVALIDATED:
-        RuntimeError('The user has removed either the audio endpoint '
-                     'device or the adapter device that the endpoint '
-                     'device connects to.')
-    elif hr+2**32 == AUDCLNT_E_SERVICE_NOT_RUNNING:
-        RuntimeError('The Windows audio service is not running.')
     else:
         raise RuntimeError('Error {}'.format(hex(hr+2**32)))
+
+def PropVariantClear(pPropVariant):
+    hr = ole32.PropVariantClear(pPropVariant)
+    check_errors(hr)
+
+def Release(ptrptr):
+    if ptrptr[0] != _ffi.NULL:
+        ptrptr[0][0].lpVtbl.Release(ptrptr[0])
+        ptrptr[0] = _ffi.NULL
 
 def CoInitialize():
     COINIT_MULTITHREADED = 0x0
@@ -330,10 +310,11 @@ class _Microphone(_Device):
         return f'<Microphone {self.name} ({self.channels} channels)>'
 
     def recorder(self, samplerate, blocksize=None):
-        pass
+        return _Recorder(self._audioClient(), samplerate, blocksize)
 
     def record(self, samplerate, length):
-        pass
+        with self.recorder(samplerate) as r:
+            return r.record(length)
 
 class _AudioClient:
     def __init__(self, ptr, samplerate, blocksize):
@@ -380,7 +361,7 @@ class _AudioClient:
         return pPadding[0]
 
 class _Player(_AudioClient):
-
+    # https://msdn.microsoft.com/en-us/library/windows/desktop/dd316756(v=vs.85).aspx
     def _render_client(self):
         iid = guidof("{F294ACFC-3146-4483-A7BF-ADDCA7C260E2}")
         ppRenderClient = _ffi.new("IAudioRenderClient**")
@@ -397,6 +378,9 @@ class _Player(_AudioClient):
     def _render_release(self, numframes):
         hr = self._ppRenderClient[0][0].lpVtbl.ReleaseBuffer(self._ppRenderClient[0], numframes, 0)
         check_errors(hr)
+
+    def _render_available_frames(self):
+        return self.buffersize-self.currentpadding
 
     def __enter__(self):
         self._ppRenderClient = self._render_client()
@@ -421,7 +405,7 @@ class _Player(_AudioClient):
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
 
         while data.nbytes > 0:
-            towrite = self.buffersize-self.currentpadding
+            towrite = self._render_available_frames()
             if towrite == 0:
                 time.sleep(0.001)
                 continue
@@ -431,39 +415,62 @@ class _Player(_AudioClient):
             self._render_release(towrite)
             data = data[towrite:]
 
-def AudioClient_GetService_Capture(self):
-    iid = guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
-    ppCaptureClient = _ffi.new("IAudioCaptureClient**")
-    hr = self[0][0].lpVtbl.GetService(self[0], iid, _ffi.cast("void**", ppCaptureClient))
-    check_errors(hr)
-    return ppCaptureClient
+class _Recorder(_AudioClient):
+    # https://msdn.microsoft.com/en-us/library/windows/desktop/dd370800(v=vs.85).aspx
+    def _capture_client(self):
+        iid = guidof("{C8ADBD64-E71E-48a0-A4DE-185C395CD317}")
+        ppCaptureClient = _ffi.new("IAudioCaptureClient**")
+        hr = self._ptr[0][0].lpVtbl.GetService(self._ptr[0], iid, _ffi.cast("void**", ppCaptureClient))
+        check_errors(hr)
+        return ppCaptureClient
 
-def PropVariantClear(pPropVariant):
-    hr = ole32.PropVariantClear(pPropVariant)
-    check_errors(hr)
+    def _capture_buffer(self):
+        data = _ffi.new("BYTE**")
+        toread = _ffi.new('UINT32*')
+        flags = _ffi.new('DWORD*')
+        hr = self._ppCaptureClient[0][0].lpVtbl.GetBuffer(self._ppCaptureClient[0], data, toread, flags, _ffi.NULL, _ffi.NULL)
+        check_errors(hr)
+        return data[0], toread[0], flags[0]
 
-def Release(self):
-    if self[0] != _ffi.NULL:
-        self[0][0].lpVtbl.Release(self[0])
-        self[0] = _ffi.NULL
+    def _capture_release(self, numframes):
+        hr = self._ppCaptureClient[0][0].lpVtbl.ReleaseBuffer(self._ppCaptureClient[0], numframes)
+        check_errors(hr)
+
+    def _capture_available_frames(self):
+        pSize = _ffi.new("UINT32*")
+        hr = self._ppCaptureClient[0][0].lpVtbl.GetNextPacketSize(self._ppCaptureClient[0], pSize)
+        check_errors(hr)
+        return pSize[0]
+
+    def __enter__(self):
+        self._ppCaptureClient = self._capture_client()
+        hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
+        check_errors(hr)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
+        check_errors(hr)
+        Release(self._ppCaptureClient)
+
+    def record(self, num_frames):
+        captured_frames = 0
+        captured_data = []
+        while captured_frames < num_frames:
+            toread = self._capture_available_frames()
+            if toread > 0:
+                data_ptr, nframes, flags = self._capture_buffer()
+                if data_ptr != _ffi.NULL:
+                    chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*self.channels), dtype='float32')
+                if nframes > 0:
+                    self._capture_release(nframes)
+                    captured_data.append(chunk)
+                    captured_frames += nframes
+            else:
+                time.sleep(0.001)
+        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
 CoInitialize()
+
 import atexit
 atexit.register(CoUninitialize)
-
-print('all speakers:', all_speakers())
-print('all microphones:', all_microphones())
-print('default speaker:', default_speaker())
-print('default microphone:', default_microphone())
-print('a speaker:', get_speaker('Lautsprecher'))
-print('a microphone:', get_microphone('Mikrofon'))
-
-import numpy
-import time
-t = numpy.linspace(0, 1, 48000)
-signal = numpy.sin(t*1000*2*numpy.pi)
-stereo_signal = numpy.tile(signal, [2,1]).T.ravel()
-stereo_signal = numpy.array(stereo_signal, 'float32')
-# stereo_signal = numpy.array(numpy.random.rand(48000*2)*2-1, 'float32')
-
-default_speaker().play(stereo_signal, 48000)
