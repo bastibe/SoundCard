@@ -4,6 +4,8 @@ import numpy as np
 import collections
 import time
 import re
+import resampy
+import math
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -379,7 +381,7 @@ class _Recorder:
                                          bufferlist)
 
             if status != 0:
-                print(status)
+                print('error during playback:', status)
 
             self._queue.append(data)
             return status
@@ -407,11 +409,19 @@ class _Recorder:
 
         """
 
-        while len(self._queue) < num_frames/self._au.blocksize:
+        while len(self._queue) < num_frames/(self._au.blocksize/self._au.resample):
             time.sleep(0.001)
 
         data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
+
+        # resample manually, since input AudioUnits can't resample
+        # natively:
+        if self._au.resample != 1:
+            data = resampy.resample(data, self._au.samplerate,
+                                    self._au.samplerate/self._au.resample, axis=0)
         self._queue.clear()
+        if self._au.channels != 1:
+            data = data.reshape([-1, self._au.channels])
         return data
 
 
@@ -469,6 +479,18 @@ class _AudioUnit:
         self.device = device
 
         blocksize = blocksize or self.blocksize
+
+        # Input AudioUnits can't use non-native sample rates.
+        # Therefore, if a non-native sample rate is requested, use a
+        # resampled block size and resample later, manually:
+        if iotype == 'input':
+            self.resample = self.samplerate/samplerate
+            blocksize = math.ceil(blocksize*self.resample)
+            # self.samplerate stays at its default value
+        else:
+            self.resample = 1
+            self.samplerate = samplerate
+
         if self.blocksizerange[0] <= blocksize <= self.blocksizerange[1]:
             self.blocksize = blocksize
         else:
@@ -476,7 +498,6 @@ class _AudioUnit:
                             .format(self.blocksizerange[0],
                                     self.blocksizerange[1]))
 
-        self.samplerate = samplerate
         self.channels = channels
 
     def _set_property(self, property, scope, element, data):
