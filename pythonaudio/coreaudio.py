@@ -3,6 +3,7 @@ import cffi
 import numpy as np
 import collections
 import time
+import re
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -12,7 +13,7 @@ with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
 _ca = _ffi.dlopen('CoreAudio')
 _au = _ffi.dlopen('AudioUnit')
 
-import coreaudioconstants as _cac
+from pythonaudio import coreaudioconstants as _cac
 
 
 def all_speakers():
@@ -44,6 +45,16 @@ def default_speaker():
     return _Speaker(id=device_id)
 
 
+def get_speaker(id):
+    """Get a specific speaker by a variety of means.
+
+    id can be an a CoreAudio id, a substring of the speaker name, or a
+    fuzzy-matched pattern for the speaker name.
+
+    """
+    return _match_device(id, all_speakers())
+
+
 def default_microphone():
     """The default microphone of the system."""
     device_id, = _CoreAudio.get_property(
@@ -51,6 +62,39 @@ def default_microphone():
         _cac.kAudioHardwarePropertyDefaultInputDevice,
         "AudioObjectID")
     return _Microphone(id=device_id)
+
+
+def get_microphone(id):
+    """Get a specific microphone by a variety of means.
+
+    id can be a CoreAudio id, a substring of the microphone name, or a
+    fuzzy-matched pattern for the microphone name.
+
+    """
+    return _match_device(id, all_microphones())
+
+
+def _match_device(id, devices):
+    """Find id in a list of devices.
+
+    id can be a CoreAudio id, a substring of the device name, or a
+    fuzzy-matched pattern for the microphone name.
+
+    """
+    devices_by_id = {device.id: device for device in devices}
+    devices_by_name = {device.name: device for device in devices}
+    if id in devices_by_id:
+        return devices_by_id[id]
+    # try substring match:
+    for name, device in devices_by_name.items():
+        if id in name:
+            return device
+    # try fuzzy match:
+    pattern = '.*'.join(id)
+    for name, device in devices_by_name.items():
+        if re.match(pattern, name):
+            return device
+    raise IndexError('no device with id {}'.format(id))
 
 
 class _Soundcard:
@@ -64,12 +108,16 @@ class _Soundcard:
         self._id = id
 
     @property
+    def id(self):
+        return self._id
+
+    @property
     def name(self):
         name = _CoreAudio.get_property(
             self._id, _cac.kAudioObjectPropertyName, 'CFStringRef')
         return _CoreAudio.CFString_to_str(name)
 
-# TODO: implement soundcard searching
+
 class _Speaker(_Soundcard):
     """A soundcard output. Can be used to play audio.
 
