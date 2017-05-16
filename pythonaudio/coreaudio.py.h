@@ -226,3 +226,36 @@ struct AudioValueRange
     Float64 mMaximum;
 };
 typedef struct AudioValueRange  AudioValueRange;
+
+
+// AudioConverter.h
+typedef struct OpaqueAudioConverter *   AudioConverterRef;
+typedef UInt32                          AudioConverterPropertyID;
+
+OSStatus AudioConverterNew(const AudioStreamBasicDescription *inSourceFormat,
+                           const AudioStreamBasicDescription *inDestinationFormat,
+                           AudioConverterRef *outAudioConverter);
+OSStatus AudioConverterDispose(AudioConverterRef inAudioConverter);
+typedef OSStatus (*AudioConverterComplexInputDataProc)(
+    AudioConverterRef inAudioConverter,
+    UInt32 *ioNumberDataPackets,
+    AudioBufferList *ioData,
+    AudioStreamPacketDescription **outDataPacketDescription,
+    void *inUserData);
+extern OSStatus AudioConverterFillComplexBuffer(
+    AudioConverterRef inAudioConverter,
+    AudioConverterComplexInputDataProc inInputDataProc,
+    void *inInputDataProcUserData,
+    UInt32 *ioOutputDataPacketSize,
+    AudioBufferList *outOutputData,
+    AudioStreamPacketDescription *outPacketDescription);
+extern OSStatus AudioConverterSetProperty(
+    AudioConverterRef inAudioConverter,
+    AudioConverterPropertyID inPropertyID,
+    UInt32 inPropertyDataSize,
+    const void *inPropertyData);
+extern OSStatus AudioConverterGetProperty(
+    AudioConverterRef inAudioConverter,
+    AudioConverterPropertyID inPropertyID,
+    UInt32 *ioPropertyDataSize,
+    void *outPropertyData);

@@ -660,3 +660,92 @@ class _AudioUnit:
 
 # Here's how to do it: http://atastypixel.com/blog/using-remoteio-audio-unit/
 # https://developer.apple.com/library/content/technotes/tn2091/_index.html
+
+
+def resample():
+
+    channels = 1
+
+    streamformat1 = _ffi.new(
+        "AudioStreamBasicDescription*",
+        dict(mSampleRate=44100,
+             mFormatID=_cac.kAudioFormatLinearPCM,
+             mFormatFlags=_cac.kAudioFormatFlagIsFloat,
+             mFramesPerPacket=1,
+             mChannelsPerFrame=channels,
+             mBitsPerChannel=32,
+             mBytesPerPacket=channels * 4,
+             mBytesPerFrame=channels * 4))
+
+    streamformat2 = _ffi.new(
+        "AudioStreamBasicDescription*",
+        dict(mSampleRate=48000,
+             mFormatID=_cac.kAudioFormatLinearPCM,
+             mFormatFlags=_cac.kAudioFormatFlagIsFloat,
+             mFramesPerPacket=1,
+             mChannelsPerFrame=channels,
+             mBitsPerChannel=32,
+             mBytesPerPacket=channels * 4,
+             mBytesPerFrame=channels * 4))
+
+    audioconverter = _ffi.new("AudioConverterRef*")
+    _au.AudioConverterNew(streamformat1, streamformat2, audioconverter)
+
+    # configure sample rate converter
+
+    value = _ffi.new("UInt32*")
+
+    data = np.array(np.sin(2*np.pi*100*np.linspace(0, 4096/44100, 4096)), 'float32')
+    original = np.array(data, copy=False)
+
+    blocksize = 512
+    buffer = _ffi.new("Float32[]", blocksize)
+
+    @_ffi.callback("AudioConverterComplexInputDataProc")
+    def converter_callback(converter, numberpackets, bufferlist, desc, userdata):
+        nonlocal data
+
+        numframes = min(numberpackets[0], len(data), blocksize)
+        raw_data = data[:numframes].tostring()
+        _ffi.memmove(buffer, raw_data, numframes*4)
+        bufferlist[0].mBuffers[0].mDataByteSize = len(raw_data)
+        bufferlist[0].mBuffers[0].mData = buffer
+        numberpackets[0] = numframes
+        data = data[numframes:]
+        return 0
+
+    queue = []
+
+    outbuffer = _ffi.new("AudioBufferList*", [1, 1])
+    outbuffer.mNumberBuffers = 1
+    outbuffer.mBuffers[0].mNumberChannels = 1
+    outbuffer.mBuffers[0].mDataByteSize = blocksize
+    outdata = _ffi.new("Float32[]", blocksize)
+    outbuffer.mBuffers[0].mData = outdata
+
+    outsize = _ffi.new("UInt32*")
+
+    while len(data) > 0:
+        outsize[0] = blocksize
+
+        status = _au.AudioConverterFillComplexBuffer(audioconverter[0],
+                                                     converter_callback,
+                                                     _ffi.NULL,
+                                                     outsize,
+                                                     outbuffer,
+                                                     _ffi.NULL)
+        if status != 0:
+            print('error during sample rate conversion:', status)
+
+        array = np.frombuffer(_ffi.buffer(outdata), dtype='float32').copy()
+
+        queue.append(array[:outsize[0]])
+
+    newdata = np.concatenate(queue)
+    queue.clear()
+
+    _au.AudioConverterDispose(audioconverter[0])
+
+    print('converted length', len(newdata), 4096*48000/44100)
+
+    return original, newdata
