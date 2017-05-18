@@ -340,91 +340,6 @@ class _Player:
         while self._queue and wait:
             time.sleep(0.001)
 
-
-class _Recorder:
-    """A context manager for an active input stream.
-
-    Audio recording is available as soon as the context manager is
-    entered. Recorded audio data can be read using the `record`
-    method. If no audio data is available, `record` will block until
-    the requested amount of audio data has been recorded.
-
-    This context manager can only be entered once, and can not be used
-    after it is closed.
-
-    """
-
-    def __init__(self, id, samplerate, channels, blocksize=None):
-        self._au = _AudioUnit("input", id, samplerate, channels, blocksize)
-
-    def __enter__(self):
-        self._queue = collections.deque()
-
-        channels = self._au.channels
-        au = self._au.ptr[0]
-
-        @_ffi.callback("AURenderCallback")
-        def input_callback(userdata, actionflags, timestamp,
-                           busnumber, numframes, bufferlist):
-            bufferlist = _ffi.new("AudioBufferList*", [1, 1])
-            bufferlist.mNumberBuffers = 1
-            bufferlist.mBuffers[0].mNumberChannels = channels
-            bufferlist.mBuffers[0].mDataByteSize = numframes * 4 * channels
-            data = _ffi.new("Float32[]", numframes * channels)
-            bufferlist.mBuffers[0].mData = data
-
-            status = _au.AudioUnitRender(au,
-                                         actionflags,
-                                         timestamp,
-                                         busnumber,
-                                         numframes,
-                                         bufferlist)
-
-            if status != 0:
-                print('error during playback:', status)
-
-            self._queue.append(data)
-            return status
-
-        self._au.set_callback(input_callback)
-        self._au.start()
-
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self._au.close()
-
-    def record(self, num_frames):
-        """Record some audio data.
-
-        The data will be returned as a `frames × channels` float32
-        numpy array.
-
-        This function will wait until `num_frames` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
-
-        """
-
-        while len(self._queue) < num_frames/(self._au.blocksize/self._au.resample):
-            time.sleep(0.001)
-
-        data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
-
-        # resample manually, since input AudioUnits can't resample
-        # natively:
-        if self._au.resample != 1:
-            data = resampy.resample(data, self._au.samplerate,
-                                    self._au.samplerate/self._au.resample, axis=0)
-        self._queue.clear()
-        if self._au.channels != 1:
-            data = data.reshape([-1, self._au.channels])
-        return data
-
-
 class _AudioUnit:
     """Communication helper with AudioUnits.
 
@@ -662,90 +577,173 @@ class _AudioUnit:
 # https://developer.apple.com/library/content/technotes/tn2091/_index.html
 
 
-def resample():
+class _Resampler:
+    def __init__(self, fromsamplerate, tosamplerate, channels):
+        self.fromsamplerate = fromsamplerate
+        self.tosamplerate = tosamplerate
+        self.channels = channels
 
-    channels = 1
+        fromstreamformat = _ffi.new(
+            "AudioStreamBasicDescription*",
+            dict(mSampleRate=self.fromsamplerate,
+                 mFormatID=_cac.kAudioFormatLinearPCM,
+                 mFormatFlags=_cac.kAudioFormatFlagIsFloat,
+                 mFramesPerPacket=1,
+                 mChannelsPerFrame=self.channels,
+                 mBitsPerChannel=32,
+                 mBytesPerPacket=self.channels * 4,
+                 mBytesPerFrame=self.channels * 4))
 
-    streamformat1 = _ffi.new(
-        "AudioStreamBasicDescription*",
-        dict(mSampleRate=44100,
-             mFormatID=_cac.kAudioFormatLinearPCM,
-             mFormatFlags=_cac.kAudioFormatFlagIsFloat,
-             mFramesPerPacket=1,
-             mChannelsPerFrame=channels,
-             mBitsPerChannel=32,
-             mBytesPerPacket=channels * 4,
-             mBytesPerFrame=channels * 4))
+        tostreamformat = _ffi.new(
+            "AudioStreamBasicDescription*",
+            dict(mSampleRate=self.tosamplerate,
+                 mFormatID=_cac.kAudioFormatLinearPCM,
+                 mFormatFlags=_cac.kAudioFormatFlagIsFloat,
+                 mFramesPerPacket=1,
+                 mChannelsPerFrame=self.channels,
+                 mBitsPerChannel=32,
+                 mBytesPerPacket=self.channels * 4,
+                 mBytesPerFrame=self.channels * 4))
 
-    streamformat2 = _ffi.new(
-        "AudioStreamBasicDescription*",
-        dict(mSampleRate=48000,
-             mFormatID=_cac.kAudioFormatLinearPCM,
-             mFormatFlags=_cac.kAudioFormatFlagIsFloat,
-             mFramesPerPacket=1,
-             mChannelsPerFrame=channels,
-             mBitsPerChannel=32,
-             mBytesPerPacket=channels * 4,
-             mBytesPerFrame=channels * 4))
+        self.audioconverter = _ffi.new("AudioConverterRef*")
+        _au.AudioConverterNew(fromstreamformat, tostreamformat, self.audioconverter)
 
-    audioconverter = _ffi.new("AudioConverterRef*")
-    _au.AudioConverterNew(streamformat1, streamformat2, audioconverter)
+        @_ffi.callback("AudioConverterComplexInputDataProc")
+        def converter_callback(converter, numberpackets, bufferlist, desc, userdata):
+            return self.converter_callback(converter, numberpackets, bufferlist, desc, userdata)
+        self._converter_callback = converter_callback
 
-    # configure sample rate converter
+        self.queue = []
 
-    value = _ffi.new("UInt32*")
+        self.blocksize = 512
+        self.outbuffer = _ffi.new("AudioBufferList*", [1, 1])
+        self.outbuffer.mNumberBuffers = 1
+        self.outbuffer.mBuffers[0].mNumberChannels = self.channels
+        self.outbuffer.mBuffers[0].mDataByteSize = self.blocksize*4*self.channels
+        self.outdata = _ffi.new("Float32[]", self.blocksize*self.channels)
+        self.outbuffer.mBuffers[0].mData = self.outdata
+        self.outsize = _ffi.new("UInt32*")
 
-    data = np.array(np.sin(2*np.pi*100*np.linspace(0, 4096/44100, 4096)), 'float32')
-    original = np.array(data, copy=False)
-
-    blocksize = 512
-    buffer = _ffi.new("Float32[]", blocksize)
-
-    @_ffi.callback("AudioConverterComplexInputDataProc")
-    def converter_callback(converter, numberpackets, bufferlist, desc, userdata):
-        nonlocal data
-
-        numframes = min(numberpackets[0], len(data), blocksize)
-        raw_data = data[:numframes].tostring()
-        _ffi.memmove(buffer, raw_data, numframes*4)
+    def converter_callback(self, converter, numberpackets, bufferlist, desc, userdata):
+        numframes = min(numberpackets[0], len(self.todo), self.blocksize)
+        raw_data = self.todo[:numframes].tostring()
+        _ffi.memmove(self.outdata, raw_data, numframes*4*self.channels)
         bufferlist[0].mBuffers[0].mDataByteSize = len(raw_data)
-        bufferlist[0].mBuffers[0].mData = buffer
+        bufferlist[0].mBuffers[0].mData = self.outdata
         numberpackets[0] = numframes
-        data = data[numframes:]
+        self.todo = self.todo[numframes:]
+
+        if len(self.todo) == 0 and numframes == 0:
+            return -1
         return 0
 
-    queue = []
+    def resample(self, data):
+        self.todo = data
+        while len(self.todo) > 0:
+            self.outsize[0] = self.blocksize
 
-    outbuffer = _ffi.new("AudioBufferList*", [1, 1])
-    outbuffer.mNumberBuffers = 1
-    outbuffer.mBuffers[0].mNumberChannels = 1
-    outbuffer.mBuffers[0].mDataByteSize = blocksize
-    outdata = _ffi.new("Float32[]", blocksize)
-    outbuffer.mBuffers[0].mData = outdata
+            status = _au.AudioConverterFillComplexBuffer(self.audioconverter[0],
+                                                         self._converter_callback,
+                                                         _ffi.NULL,
+                                                         self.outsize,
+                                                         self.outbuffer,
+                                                         _ffi.NULL)
 
-    outsize = _ffi.new("UInt32*")
+            if status != 0 and status != -1:
+                raise RuntimeError('error during sample rate conversion:', status)
 
-    while len(data) > 0:
-        outsize[0] = blocksize
+            array = np.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
 
-        status = _au.AudioConverterFillComplexBuffer(audioconverter[0],
-                                                     converter_callback,
-                                                     _ffi.NULL,
-                                                     outsize,
-                                                     outbuffer,
-                                                     _ffi.NULL)
-        if status != 0:
-            print('error during sample rate conversion:', status)
+            self.queue.append(array[:self.outsize[0]])
 
-        array = np.frombuffer(_ffi.buffer(outdata), dtype='float32').copy()
+        converted_data = np.concatenate(self.queue)
+        self.queue.clear()
 
-        queue.append(array[:outsize[0]])
+        return converted_data
 
-    newdata = np.concatenate(queue)
-    queue.clear()
+    def __del__(self):
+        _au.AudioConverterDispose(self.audioconverter[0])
 
-    _au.AudioConverterDispose(audioconverter[0])
 
-    print('converted length', len(newdata), 4096*48000/44100)
+class _Recorder:
+    """A context manager for an active input stream.
 
-    return original, newdata
+    Audio recording is available as soon as the context manager is
+    entered. Recorded audio data can be read using the `record`
+    method. If no audio data is available, `record` will block until
+    the requested amount of audio data has been recorded.
+
+    This context manager can only be entered once, and can not be used
+    after it is closed.
+
+    """
+
+    def __init__(self, id, samplerate, channels, blocksize=None):
+        self._au = _AudioUnit("input", id, samplerate, channels, blocksize)
+        self._resampler = _Resampler(self._au.samplerate, samplerate, self._au.channels)
+
+    def __enter__(self):
+        self._queue = collections.deque()
+
+        channels = self._au.channels
+        au = self._au.ptr[0]
+
+        @_ffi.callback("AURenderCallback")
+        def input_callback(userdata, actionflags, timestamp,
+                           busnumber, numframes, bufferlist):
+            bufferlist = _ffi.new("AudioBufferList*", [1, 1])
+            bufferlist.mNumberBuffers = 1
+            bufferlist.mBuffers[0].mNumberChannels = channels
+            bufferlist.mBuffers[0].mDataByteSize = numframes * 4 * channels
+            data = _ffi.new("Float32[]", numframes * channels)
+            bufferlist.mBuffers[0].mData = data
+
+            status = _au.AudioUnitRender(au,
+                                         actionflags,
+                                         timestamp,
+                                         busnumber,
+                                         numframes,
+                                         bufferlist)
+
+            if status != 0:
+                print('error during recording:', status)
+
+            self._queue.append(data)
+            return status
+
+        self._au.set_callback(input_callback)
+        self._au.start()
+
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._au.close()
+
+    def record(self, num_frames):
+        """Record some audio data.
+
+        The data will be returned as a `frames × channels` float32
+        numpy array.
+
+        This function will wait until `num_frames` frames have been
+        recorded. However, the audio backend holds the final authority
+        over how much audio data can be read at a time, so the
+        returned amount of data will often be slightly larger than
+        what was requested. The amount of buffering can be controlled
+        through the blocksize of the recorder object.
+
+        """
+
+        while len(self._queue) < num_frames/(self._au.blocksize/self._au.resample):
+            time.sleep(0.001)
+
+        data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
+        self._queue.clear()
+
+        if self._au.resample != 1:
+            data = self._resampler.resample(data)
+
+        if self._au.channels != 1:
+            data = data.reshape([-1, self._au.channels])
+
+        return data
