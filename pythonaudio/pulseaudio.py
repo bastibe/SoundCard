@@ -86,7 +86,6 @@ def _match_soundcard(id, soundcards):
     raise IndexError('no soundcard with id {}'.format(id))
 
 
-# TODO: implement name property
 class _SoundCard:
     def __init__(self, *, id):
         self._id = id
@@ -98,10 +97,6 @@ class _SoundCard:
     @property
     def id(self):
         return self._id
-
-    @property
-    def name(self):
-        return None
 
     def _get_info(self):
         with _PulseAudio() as p:
@@ -121,8 +116,14 @@ class _Speaker(_SoundCard):
     """
 
     def __repr__(self):
-        return '<Speaker {} ({} channels)>'.format(self._id, self.channels)
+        return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
+    @property
+    def name(self):
+        with _PulseAudio() as p:
+            for source in p.source_list:
+                if self._id in source['id']:
+                    return source['name']
 
     def player(self, samplerate, blocksize=None):
         return _Player(self._id, samplerate, self.channels, blocksize)
@@ -149,7 +150,14 @@ class _Microphone(_SoundCard):
     """
 
     def __repr__(self):
-        return '<Microphone {} ({} channels)>'.format(self._id, self.channels)
+        return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
+
+    @property
+    def name(self):
+        with _PulseAudio() as p:
+            for sink in p.sink_list:
+                if self._id in sink['id']:
+                    return sink['name']
 
     def recorder(self, samplerate, blocksize=None):
         return _Recorder(self._id, samplerate, self.channels, blocksize)
