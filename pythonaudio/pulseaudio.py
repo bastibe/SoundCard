@@ -85,9 +85,30 @@ def _match_soundcard(id, soundcards):
             return soundcard
     raise IndexError('no soundcard with id {}'.format(id))
 
+
 # TODO: implement name property
-# TODO: implement ID property
-class _Speaker:
+class _SoundCard:
+    def __init__(self, *, id):
+        self._id = id
+
+    @property
+    def channels(self):
+        return self._get_info()['channels']
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return None
+
+    def _get_info(self):
+        with _PulseAudio() as p:
+            return p.source_info(self._id)
+
+
+class _Speaker(_SoundCard):
     """A soundcard output. Can be used to play audio.
 
     Use the `play` method to play one piece of audio, or use the
@@ -99,29 +120,23 @@ class _Speaker:
 
     """
 
-    def __init__(self, *, id):
-        self._id = id
-
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self._id, self.channels)
 
-    @property
-    def channels(self):
-        return self._get_info()['channels']
+
+    def player(self, samplerate, blocksize=None):
+        return _Player(self._id, samplerate, self.channels, blocksize)
+
+    def play(self, data, samplerate, blocksize=None):
+        with _Player(self._id, samplerate, self.channels, blocksize) as s:
+            s.play(data)
 
     def _get_info(self):
         with _PulseAudio() as p:
             return p.sink_info(self._id)
 
-    def player(self, samplerate, blocksize=None):
-        return _Player(self._id, samplerate, self.channels, blocksize=blocksize)
 
-    def play(self, data, samplerate):
-        with _Player(self._id, samplerate, self.channels) as s:
-            s.play(data)
-
-
-class _Microphone:
+class _Microphone(_SoundCard):
     """A soundcard input. Can be used to record audio.
 
     Use the `record` method to record a piece of audio, or use the
@@ -133,26 +148,15 @@ class _Microphone:
 
     """
 
-    def __init__(self, *, id):
-        self._id = id
-
     def __repr__(self):
         return '<Microphone {} ({} channels)>'.format(self._id, self.channels)
 
-    @property
-    def channels(self):
-        return self._get_info()['channels']
-
-    def _get_info(self):
-        with _PulseAudio() as p:
-            return p.source_info(self._id)
-
     def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._id, samplerate, self.channels, blocksize=blocksize)
+        return _Recorder(self._id, samplerate, self.channels, blocksize)
 
-    def record(self, samplerate, length):
-        with _Recorder(self._id, samplerate, self.channels) as r:
-            return r.record(length)
+    def record(self, numframes, samplerate, blocksize=None):
+        with _Recorder(self._id, samplerate, self.channels, blocksize) as r:
+            return r.record(numframes)
 
 
 class _Stream:

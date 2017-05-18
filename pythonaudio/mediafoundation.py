@@ -377,9 +377,10 @@ class _Speaker(_Device):
     def player(self, samplerate, blocksize=None):
         return _Player(self._audio_client(), samplerate, blocksize)
 
-    def play(self, data, samplerate):
-        with self.player(samplerate) as p:
+    def play(self, data, samplerate, blocksize=None):
+        with self.player(samplerate, blocksize) as p:
             p.play(data)
+
 
 class _Microphone(_Device):
     """A soundcard input. Can be used to record audio.
@@ -404,9 +405,9 @@ class _Microphone(_Device):
     def recorder(self, samplerate, blocksize=None):
         return _Recorder(self._audio_client(), samplerate, blocksize)
 
-    def record(self, samplerate, length):
-        with self.recorder(samplerate) as r:
-            return r.record(length)
+    def record(self, numframes, samplerate, blocksize=None):
+        with self.recorder(samplerate, blocksize) as r:
+            return r.record(numframes)
 
 class _AudioClient:
     """Wrapper class for an IAudioClient** object.

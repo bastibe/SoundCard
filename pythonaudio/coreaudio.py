@@ -147,11 +147,11 @@ class _Speaker(_Soundcard):
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    def player(self, samplerate, channels=None, blocksize=None):
-        return _Player(self._id, samplerate, channels or self.channels, blocksize=blocksize)
+    def player(self, samplerate, blocksize=None):
+        return _Player(self._id, samplerate, self.channels, blocksize)
 
-    def play(self, data, samplerate, channels=None, blocksize=None):
-        with self.player(samplerate, channels or self.channels, blocksize) as p:
+    def play(self, data, samplerate, blocksize=None):
+        with self.player(samplerate, self.channels, blocksize) as p:
             p.play(data)
 
 
@@ -182,11 +182,11 @@ class _Microphone(_Soundcard):
     def __repr__(self):
         return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
-    def recorder(self, samplerate, channels=None, blocksize=None):
-        return _Recorder(self._id, samplerate, channels or self.channels, blocksize=blocksize)
+    def recorder(self, samplerate, blocksize=None):
+        return _Recorder(self._id, samplerate, self.channels, blocksize)
 
-    def record(self, numframes, samplerate, channels=None, blocksize=None):
-        with self.recorder(samplerate, channels or self.channels, blocksize) as p:
+    def record(self, numframes, samplerate, blocksize=None):
+        with self.recorder(samplerate, self.channels, blocksize) as p:
             p.record(numframes)
 
 
