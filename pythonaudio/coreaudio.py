@@ -183,7 +183,7 @@ class _Microphone(_Soundcard):
         return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
     def recorder(self, samplerate, channels=None, blocksize=None):
-        return _Recorder(self._id, samplerate, channels or self.channels)
+        return _Recorder(self._id, samplerate, channels or self.channels, blocksize=blocksize)
 
     def record(self, numframes, samplerate, channels=None, blocksize=None):
         with self.recorder(samplerate, channels or self.channels, blocksize) as p:
@@ -400,7 +400,7 @@ class _AudioUnit:
         # resampled block size and resample later, manually:
         if iotype == 'input':
             self.resample = self.samplerate/samplerate
-            blocksize = math.ceil(blocksize*self.resample)
+            # blocksize = math.ceil(blocksize*self.resample)
             # self.samplerate stays at its default value
         else:
             self.resample = 1
@@ -627,7 +627,7 @@ class _Resampler:
     def converter_callback(self, converter, numberpackets, bufferlist, desc, userdata):
         numframes = min(numberpackets[0], len(self.todo), self.blocksize)
         raw_data = self.todo[:numframes].tostring()
-        _ffi.memmove(self.outdata, raw_data, numframes*4*self.channels)
+        _ffi.memmove(self.outdata, raw_data, len(raw_data))
         bufferlist[0].mBuffers[0].mDataByteSize = len(raw_data)
         bufferlist[0].mBuffers[0].mData = self.outdata
         numberpackets[0] = numframes
@@ -654,7 +654,7 @@ class _Resampler:
 
             array = np.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
 
-            self.queue.append(array[:self.outsize[0]])
+            self.queue.append(array[:self.outsize[0]*self.channels])
 
         converted_data = np.concatenate(self.queue)
         self.queue.clear()
@@ -734,11 +734,14 @@ class _Recorder:
 
         """
 
-        while len(self._queue) < num_frames/(self._au.blocksize/self._au.resample):
+        while sum(len(q) for q in self._queue) < (num_frames*self._au.channels)/self._au.resample:
             time.sleep(0.001)
 
         data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
         self._queue.clear()
+
+        if self._au.channels != 1:
+            data = data.reshape([-1, self._au.channels])
 
         if self._au.resample != 1:
             data = self._resampler.resample(data)

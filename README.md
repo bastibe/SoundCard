@@ -50,7 +50,7 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
 
 ## Known Issues:
 
-* macOS/coreaudio can not change the samplerate when recording. Currently, this is worked around by manually resampling the recorded audio using [resampy](http://resampy.readthedocs.io/en/latest/). A better solution would setup an `AUGraph` with a manually-configured `AudioConverter`.
+* macOS/coreaudio currently does not record the first block correctly. The reason for this is still unknown.
 * At the moment, linux/pulseaudio does not give human-readable soundcard names yet. This will be implemented in the future.
 
 
