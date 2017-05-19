@@ -4,7 +4,6 @@ import numpy as np
 import collections
 import time
 import re
-import resampy
 import math
 
 _ffi = cffi.FFI()
