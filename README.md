@@ -51,7 +51,11 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
 ## Known Issues:
 
 * macOS/coreaudio currently does not record the first block correctly. The reason for this is still unknown.
-
+* Linux/pulseaudio sometimes shows many spurious microphones, some of which seem to be USB sound cards that have been disconnected. Obviously, these microphones won't work. The default microphone should work, though.
+* Linux/pulseaudio does not report nice device names yet. This will be improved in the future.
+* All sound cards use all channels at all times. Proper channel mapping will be implemented in the future.
+* Error messages often report some internal CFFI/backend errors. This will be improved in the future.
+* Documentation is not great yet. This will be improved in the future.
 
 ## License
 
