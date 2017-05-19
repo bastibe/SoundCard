@@ -120,10 +120,7 @@ class _Speaker(_SoundCard):
 
     @property
     def name(self):
-        with _PulseAudio() as p:
-            for source in p.source_list:
-                if self._id in source['id']:
-                    return source['name']
+        return self._id
 
     def player(self, samplerate, blocksize=None):
         return _Player(self._id, samplerate, self.channels, blocksize)
@@ -154,10 +151,7 @@ class _Microphone(_SoundCard):
 
     @property
     def name(self):
-        with _PulseAudio() as p:
-            for sink in p.sink_list:
-                if self._id in sink['id']:
-                    return sink['name']
+        return self._id
 
     def recorder(self, samplerate, blocksize=None):
         return _Recorder(self._id, samplerate, self.channels, blocksize)
@@ -214,11 +208,12 @@ class _Stream:
 
     def __exit__(self, exc_type, exc_value, traceback):
         try:
-            self._pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
+            if isinstance(self, _Player): # only playback streams need to drain
+                self._pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
             self._pulse._pa_stream_disconnect(self.stream)
             while self._pulse._pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
                 time.sleep(0.01)
-                self._pulse._pa_stream_unref(self.stream)
+            self._pulse._pa_stream_unref(self.stream)
         finally:
             # make sure that this definitely gets called no matter what:
             self._pulse.__exit__(exc_type, exc_value, traceback)
