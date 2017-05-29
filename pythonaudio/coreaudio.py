@@ -150,7 +150,7 @@ class _Speaker(_Soundcard):
         return _Player(self._id, samplerate, self.channels, blocksize)
 
     def play(self, data, samplerate, blocksize=None):
-        with self.player(samplerate, self.channels, blocksize) as p:
+        with self.player(samplerate, blocksize) as p:
             p.play(data)
 
 
@@ -185,8 +185,8 @@ class _Microphone(_Soundcard):
         return _Recorder(self._id, samplerate, self.channels, blocksize)
 
     def record(self, numframes, samplerate, blocksize=None):
-        with self.recorder(samplerate, self.channels, blocksize) as p:
-            p.record(numframes)
+        with self.recorder(samplerate, blocksize) as p:
+            return p.record(numframes)
 
 
 class _CoreAudio:
