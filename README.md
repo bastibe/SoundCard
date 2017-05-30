@@ -38,7 +38,7 @@ print(default_mic)
 >>> <Microphone alsa_input.usb-Focuswrite_Scarlett_2i2_USB-00-USB.analog-stereo (2 channels)>
 
 # record and play back one second of audio:
-data = default_mic.record(samplerate=44100, length=44100)
+data = default_mic.record(samplerate=44100, numframes=44100)
 default_speaker.play(data/numpy.max(data), samplerate=44100)
 
 # alternatively, get a `recorder` and `player` object and play or record continuously:
