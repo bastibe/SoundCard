@@ -4,6 +4,7 @@ import os
 import cffi
 import numpy
 import time
+import re
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
