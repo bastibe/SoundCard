@@ -44,7 +44,7 @@ default_speaker.play(data/numpy.max(data), samplerate=44100)
 # alternatively, get a `recorder` and `player` object and play or record continuously:
 with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(samplerate=44100) as sp:
     for _ in range(100):
-        data = mic.record(num_frames=1024)
+        data = mic.record(numframes=1024)
         sp.play(data)
 ```
 
