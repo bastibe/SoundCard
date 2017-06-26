@@ -4,6 +4,7 @@ import os
 import cffi
 import numpy
 import time
+import re
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -598,13 +599,13 @@ class _Recorder(_AudioClient):
         _com.check_error(hr)
         _com.release(self._ppCaptureClient)
 
-    def record(self, num_frames):
+    def record(self, numframes):
         """Record some audio data.
 
         The data will be returned as a `frames x channels` float32
         numpy array.
 
-        This function will wait until `num_frames` frames have been
+        This function will wait until `numframes` frames have been
         recorded. However, the audio backend holds the final authority
         over how much audio data can be read at a time, so the
         returned amount of data will often be slightly larger than
@@ -615,7 +616,7 @@ class _Recorder(_AudioClient):
 
         captured_frames = 0
         captured_data = []
-        while captured_frames < num_frames:
+        while captured_frames < numframes:
             toread = self._capture_available_frames()
             if toread > 0:
                 data_ptr, nframes, flags = self._capture_buffer()
