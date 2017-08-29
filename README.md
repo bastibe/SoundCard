@@ -1,10 +1,10 @@
-# Python-Audio
+# SoundCard
 
-Python-Audio is a library for playing and recording audio without resorting to a CPython extension. Instead, it is implemented using the wonderful [CFFI](http://cffi.readthedocs.io/en/latest/) and the native audio libraries of Linux, Windows and macOS.
+SoundCard is a library for playing and recording audio without resorting to a CPython extension. Instead, it is implemented using the wonderful [CFFI](http://cffi.readthedocs.io/en/latest/) and the native audio libraries of Linux, Windows and macOS.
 
-Python-Audio is cross-platform, and supports Linux/pulseaudio, Mac/coreaudio, and Windows/WASAPI. While the interface is identical across platforms, naming schemes and block sizes can vary between devices and platforms.
+SoundCard is cross-platform, and supports Linux/pulseaudio, Mac/coreaudio, and Windows/WASAPI. While the interface is identical across platforms, naming schemes and block sizes can vary between devices and platforms.
 
-Python-Audio is still very early in its development. All major building blocks are in place, but I fully expect there to be bugs and possibly crashes. If you find a bug, please open an Issue, and I will try to fix it. Or open a Pull Request, and I will try to include your fix into Python-Audio.
+SoundCard is still very early in its development. All major building blocks are in place, but I fully expect there to be bugs and possibly crashes. If you find a bug, please open an Issue, and I will try to fix it. Or open a Pull Request, and I will try to include your fix into SoundCard.
 
 However, please be aware that this is a hobby project of mine that I am developing for free, and in my spare time. While I try to be as accomodating as possible, I can not guarantee a timely response to issues. Publishing Open Source Software on Github does not imply an obligation to *fix your problem right now*. Please be civil.
 
@@ -13,18 +13,18 @@ However, please be aware that this is a hobby project of mine that I am developi
 Here is how you get to your Speakers and Microphones:
 
 ```python
-import pythonaudio as pa
+import soundcard as sc
 
-speakers = pa.all_speakers()
-default_speaker = pa.default_speaker()
-mics = pa.all_microphones()
-default_mic = pa.default_microphone()
+speakers = sc.all_speakers()
+default_speaker = sc.default_speaker()
+mics = sc.all_microphones()
+default_mic = sc.default_microphone()
 # search by substring:
-one_speaker = pa.get_speaker('Scarlett')
-one_mic = pa.get_microphone('Scarlett')
+one_speaker = sc.get_speaker('Scarlett')
+one_mic = sc.get_microphone('Scarlett')
 # fuzzy-search:
-one_speker = pa.get_speaker('FS2i2')
-one_mic = pa.get_microphone('FS2i2')
+one_speker = sc.get_speaker('FS2i2')
+one_mic = sc.get_microphone('FS2i2')
 ```
 
 All of these functions return `Speaker` and `Microphone` objects, which can be used for playback and recording. All data passed in and out of these objects are *frames × channels* Numpy arrays.

@@ -1,13 +1,13 @@
 from setuptools import setup
 
 setup(
-    name='pythonaudio',
+    name='SoundCard',
     version='0.1.0',
     description='Play and record audio without resorting to CPython extensions',
     author='Bastian Bechtold',
-    url='https://github.com/bastibe/Python-Audio',
+    url='https://github.com/bastibe/SoundCard',
     license='BSD 3-clause',
-    packages=['pythonaudio'],
-    package_data={'pythonaudio': ['*.py.h']},
+    packages=['soundcard'],
+    package_data={'soundcard': ['*.py.h']},
     install_requires=['numpy', 'cffi']
 )

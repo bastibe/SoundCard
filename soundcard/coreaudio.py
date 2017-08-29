@@ -14,7 +14,7 @@ with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
 _ca = _ffi.dlopen('CoreAudio')
 _au = _ffi.dlopen('AudioUnit')
 
-from pythonaudio import coreaudioconstants as _cac
+from soundcard import coreaudioconstants as _cac
 
 
 def all_speakers():
