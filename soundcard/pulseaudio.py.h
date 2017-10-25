@@ -175,6 +175,7 @@ typedef enum pa_sink_state { /* enum serialized in u8 */
 } pa_sink_state_t;
 
 typedef struct pa_proplist pa_proplist;
+const char *pa_proplist_gets(pa_proplist *p, const char *key);
 
 typedef enum pa_encoding {
     PA_ENCODING_ANY,
@@ -206,7 +207,6 @@ typedef struct pa_cvolume {
     pa_volume_t values[PA_CHANNELS_MAX];
 } pa_cvolume;
 
-typedef struct pa_proplist pa_proplist;
 typedef uint64_t pa_usec_t;
 
 typedef enum pa_sink_flags {

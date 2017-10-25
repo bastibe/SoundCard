@@ -38,10 +38,20 @@ def get_speaker(id):
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
 
 
-def all_microphones():
-    """A list of all connected microphones."""
+def all_microphones(exclude_monitors=True):
+    """A list of all connected microphones.
+
+    By default, this does not include monitors (virtual microphones
+    that record the output of a speaker).
+
+    """
+
     with _PulseAudio() as p:
-        return [_Microphone(id=m['id']) for m in p.source_list]
+        mics = [_Microphone(id=m['id']) for m in p.source_list]
+        if exclude_monitors:
+            return [m for m in mics if m._get_info()['device.class'] != 'monitor']
+        else:
+            return mics
 
 
 def default_microphone():
@@ -70,8 +80,10 @@ def _match_soundcard(id, soundcards):
     a fuzzy-matched pattern for the microphone name.
 
     """
-    soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
-    soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
+    soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
+                        if not 'monitor' in soundcard['id']}
+    soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
+                          if not 'monitor' in soundcard['id']}
     if id in soundcards_by_id:
         return soundcards_by_id[id]
     # try substring match:
@@ -427,10 +439,15 @@ class _PulseAudio:
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
-                info.append(dict(latency=source_info.latency,
+                info_dict = dict(latency=source_info.latency,
                                  configured_latency=source_info.configured_latency,
                                  channels=source_info.sample_spec.channels,
-                                 name=_ffi.string(source_info.description).decode('utf-8')))
+                                 name=_ffi.string(source_info.description).decode('utf-8'))
+                for prop in ['device.class', 'device.api', 'device.bus']:
+                    data = _pa.pa_proplist_gets(source_info.proplist, prop.encode())
+                    info_dict[prop] = _ffi.string(data).decode('utf-8') if data else None
+                info.append(info_dict)
+
         self._pa_context_get_source_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
@@ -452,10 +469,14 @@ class _PulseAudio:
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
-                info.append(dict(latency=sink_info.latency,
+                info_dict = dict(latency=sink_info.latency,
                                  configured_latency=sink_info.configured_latency,
                                  channels=sink_info.sample_spec.channels,
-                                 name=_ffi.string(sink_info.description).decode('utf-8')))
+                                 name=_ffi.string(sink_info.description).decode('utf-8'))
+                for prop in ['device.class', 'device.api', 'device.bus']:
+                    data = _pa.pa_proplist_gets(sink_info.proplist, prop.encode())
+                    info_dict[prop] = _ffi.string(data).decode('utf-8') if data else None
+                info.append(info_dict)
         self._pa_context_get_sink_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
