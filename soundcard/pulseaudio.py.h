@@ -99,6 +99,19 @@ typedef struct pa_channel_map {
     pa_channel_position_t map[PA_CHANNELS_MAX];
 } pa_channel_map;
 
+typedef enum pa_channel_map_def {
+    PA_CHANNEL_MAP_AIFF,
+    PA_CHANNEL_MAP_ALSA,
+    PA_CHANNEL_MAP_AUX,
+    PA_CHANNEL_MAP_WAVEEX,
+    PA_CHANNEL_MAP_OSS,
+    PA_CHANNEL_MAP_DEF_MAX,
+    PA_CHANNEL_MAP_DEFAULT = PA_CHANNEL_MAP_AIFF
+} pa_channel_map_def_t;
+
+pa_channel_map* pa_channel_map_init_auto(pa_channel_map *m, unsigned channels, pa_channel_map_def_t def);
+int pa_channel_map_valid(const pa_channel_map *map);
+
 typedef struct pa_buffer_attr {
     uint32_t maxlength;
     uint32_t tlength;

@@ -8,6 +8,7 @@ with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
 
 _pa = _ffi.dlopen('pulse')
 
+import collections
 import time
 import re
 import numpy
@@ -123,7 +124,10 @@ class _Speaker(_SoundCard):
     audio.
 
     Properties:
-    - `channels`: the number of available channels
+    - `channels`: either the number of channels to record, or a list
+      of channel indices. Index 0 is the mono mixture of all channels,
+      and subsequent numbers are channel numbers (left, right, center,
+      ...)
 
     """
 
@@ -134,11 +138,15 @@ class _Speaker(_SoundCard):
     def name(self):
         return self._get_info()['name']
 
-    def player(self, samplerate, blocksize=None):
-        return _Player(self._id, samplerate, self.channels, blocksize)
+    def player(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Player(self._id, samplerate, channels, blocksize)
 
-    def play(self, data, samplerate, blocksize=None):
-        with _Player(self._id, samplerate, self.channels, blocksize) as s:
+    def play(self, data, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        with _Player(self._id, samplerate, channels, blocksize) as s:
             s.play(data)
 
     def _get_info(self):
@@ -154,7 +162,10 @@ class _Microphone(_SoundCard):
     continuous audio.
 
     Properties:
-    - `channels`: the number of available channels
+    - `channels`: either the number of channels to record, or a list
+      of channel indices. Index 0 is the mono mixture of all channels,
+      and subsequent numbers are channel numbers (left, right, center,
+      ...)
 
     """
 
@@ -165,11 +176,15 @@ class _Microphone(_SoundCard):
     def name(self):
         return self._get_info()['name']
 
-    def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._id, samplerate, self.channels, blocksize)
+    def recorder(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Recorder(self._id, samplerate, channels, blocksize)
 
-    def record(self, numframes, samplerate, blocksize=None):
-        with _Recorder(self._id, samplerate, self.channels, blocksize) as r:
+    def record(self, numframes, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        with _Recorder(self._id, samplerate, channels, blocksize) as r:
             return r.record(numframes)
 
 
@@ -195,13 +210,28 @@ class _Stream:
     def __enter__(self):
         self._pulse = _PulseAudio()
         self._pulse.__enter__()
+
         samplespec = _ffi.new("pa_sample_spec*")
         samplespec.format = _pa.PA_SAMPLE_FLOAT32LE
         samplespec.rate = self._samplerate
-        samplespec.channels = self.channels
+        if isinstance(self.channels, collections.Iterable):
+            samplespec.channels = len(self.channels)
+        elif isinstance(self.channels, int):
+            samplespec.channels = self.channels
+        else:
+            raise TypeError('channels must be iterable or integer')
         if not self._pulse._pa_sample_spec_valid(samplespec):
-            raise RuntimeException('invalid sample spec')
-        self.stream = self._pulse._pa_stream_new(self._pulse.context, self._name.encode(), samplespec, _ffi.NULL)
+            raise RuntimeError('invalid sample spec')
+
+        channelmap = _ffi.new("pa_channel_map*")
+        channelmap = _pa.pa_channel_map_init_auto(channelmap, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
+        if isinstance(self.channels, collections.Iterable):
+            for idx, ch in enumerate(self.channels):
+                channelmap.map[idx] = ch
+        if not _pa.pa_channel_map_valid(channelmap):
+            raise RuntimeError('invalid channel map')
+
+        self.stream = self._pulse._pa_stream_new(self._pulse.context, self._name.encode(), samplespec, channelmap)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
         bufattr.fragsize = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # recording block size

@@ -51,7 +51,7 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
 ## Known Issues:
 
 * macOS/coreaudio currently does not record the first block correctly. The reason for this is still unknown.
-* All sound cards use all channels at all times. Proper channel mapping will be implemented in the future.
+* Channel maps are not implemented on Windows and macOS. Currently, only Linux/pulseaudio support channel maps.
 * Error messages often report some internal CFFI/backend errors. This will be improved in the future.
 * Documentation is not great yet. This will be improved in the future.
 
