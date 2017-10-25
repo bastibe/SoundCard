@@ -120,7 +120,7 @@ class _Speaker(_SoundCard):
 
     @property
     def name(self):
-        return self._id
+        return self._get_info()['name']
 
     def player(self, samplerate, blocksize=None):
         return _Player(self._id, samplerate, self.channels, blocksize)
@@ -151,7 +151,7 @@ class _Microphone(_SoundCard):
 
     @property
     def name(self):
-        return self._id
+        return self._get_info()['name']
 
     def recorder(self, samplerate, blocksize=None):
         return _Recorder(self._id, samplerate, self.channels, blocksize)
@@ -429,7 +429,8 @@ class _PulseAudio:
             if not eol:
                 info.append(dict(latency=source_info.latency,
                                  configured_latency=source_info.configured_latency,
-                                 channels=source_info.sample_spec.channels))
+                                 channels=source_info.sample_spec.channels,
+                                 name=_ffi.string(source_info.description).decode('utf-8')))
         self._pa_context_get_source_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
@@ -453,7 +454,8 @@ class _PulseAudio:
             if not eol:
                 info.append(dict(latency=sink_info.latency,
                                  configured_latency=sink_info.configured_latency,
-                                 channels=sink_info.sample_spec.channels))
+                                 channels=sink_info.sample_spec.channels,
+                                 name=_ffi.string(sink_info.description).decode('utf-8')))
         self._pa_context_get_sink_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
