@@ -340,9 +340,17 @@ class _Player:
 
         """
 
-        data = np.asarray(data*0.5, dtype="float32", order='C')
+        data = np.asarray(data, dtype="float32", order='C')
         data[data>1] = 1
         data[data<-1] = -1
+        if data.ndim == 1:
+            data = data[:, None] # force 2d
+        if data.ndim != 2:
+            raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
+        if data.shape[1] == 1 and self._au.channels != 1:
+            data = numpy.tile(data, [1, self._au.channels])
+        if data.shape[1] != self._au.channels:
+            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         idx = 0
         while idx < len(data)-self._au.blocksize:
             self._queue.append(data[idx:idx+self._au.blocksize])
