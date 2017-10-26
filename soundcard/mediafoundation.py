@@ -5,6 +5,7 @@ import cffi
 import numpy
 import time
 import re
+import collections
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -375,11 +376,13 @@ class _Speaker(_Device):
     def __repr__(self):
         return f'<Speaker {self.name} ({self.channels} channels)>'
 
-    def player(self, samplerate, blocksize=None):
-        return _Player(self._audio_client(), samplerate, blocksize)
+    def player(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Player(self._audio_client(), samplerate, channels, blocksize)
 
-    def play(self, data, samplerate, blocksize=None):
-        with self.player(samplerate, blocksize) as p:
+    def play(self, data, samplerate, channels=None, blocksize=None):
+        with self.player(samplerate, channels, blocksize) as p:
             p.play(data)
 
 
@@ -403,11 +406,13 @@ class _Microphone(_Device):
     def __repr__(self):
         return f'<Microphone {self.name} ({self.channels} channels)>'
 
-    def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._audio_client(), samplerate, blocksize)
+    def recorder(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Recorder(self._audio_client(), samplerate, channels, blocksize)
 
-    def record(self, numframes, samplerate, blocksize=None):
-        with self.recorder(samplerate, blocksize) as r:
+    def record(self, numframes, samplerate, channels=None, blocksize=None):
+        with self.recorder(samplerate, channels, blocksize) as r:
             return r.record(numframes)
 
 class _AudioClient:
@@ -420,21 +425,34 @@ class _AudioClient:
 
     """
 
-    def __init__(self, ptr, samplerate, blocksize):
+    def __init__(self, ptr, samplerate, channels, blocksize):
         self._ptr = ptr
+        if isinstance(channels, int):
+            self.channelmap = list(range(channels))
+        elif isinstance(channels, collections.Iterable):
+            self.channelmap = channels
+        else:
+            raise TypeError('channels must be iterable or integer')
+
         if blocksize is None:
             blocksize = self.deviceperiod[0]*samplerate
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 # rate-adjust | auto-convert-PCM | SRC-default-quality The
-        ppMixFormat = _ffi.new('WAVEFORMATEX**')
-        hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat) # fetch nChannels
+        ppMixFormat = _ffi.new('WAVEFORMATEXTENSIBLE**')
+        hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat)
         _com.check_error(hr)
-        self.channels = ppMixFormat[0][0].nChannels
-        ppMixFormat[0][0].wFormatTag = 0x0003 # IEEE float
-        ppMixFormat[0][0].wBitsPerSample = 32
-        ppMixFormat[0][0].nSamplesPerSec = int(samplerate)
-        ppMixFormat[0][0].nBlockAlign = ppMixFormat[0][0].nChannels * ppMixFormat[0][0].wBitsPerSample // 8
-        ppMixFormat[0][0].nAvgBytesPerSec = ppMixFormat[0][0].nSamplesPerSec * ppMixFormat[0][0].nBlockAlign
-        ppMixFormat[0][0].cbSize = 0
+        ppMixFormat[0][0].Format.nChannels = len(set(self.channelmap))
+        ppMixFormat[0][0].Format.wFormatTag = 0x0003 # IEEE float
+        ppMixFormat[0][0].Format.wBitsPerSample = 32
+        ppMixFormat[0][0].Format.nSamplesPerSec = int(samplerate)
+        ppMixFormat[0][0].Format.nBlockAlign = ppMixFormat[0][0].Format.nChannels * ppMixFormat[0][0].Format.wBitsPerSample // 8
+        ppMixFormat[0][0].Format.nAvgBytesPerSec = ppMixFormat[0][0].Format.nSamplesPerSec * ppMixFormat[0][0].Format.nBlockAlign
+        ppMixFormat[0][0].Format.cbSize = 0
+        ppMixFormat[0][0].Samples.wValidBitsPerSample = 32
+        channelmask = 0
+        for ch in self.channelmap:
+            channelmask |= 1 << ch
+        ppMixFormat[0][0].dwChannelMask = channelmask
+        ppMixFormat[0][0].SubFormat = _guidof("{00000003-0000-0010-8000-00aa00389b71}")[0] # PCM (shared/ksmedia.h)
         sharemode = 0 # shared (um/AudioSessionTypes:33)
         bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
@@ -528,15 +546,19 @@ class _Player(_AudioClient):
 
         """
 
-        data = numpy.array(data, dtype='float32')
+        data = numpy.array(data, dtype='float32', order='C')
         if data.ndim == 1:
             data = data[:, None] # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
-            data = numpy.tile(data, [1, self.channels])
-        if data.shape[1] != self.channels:
+            data = numpy.tile(data, [1, len(self.channelmap)])
+        if data.shape[1] != len(self.channelmap):
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
+
+        # internally, channels numbers are always ascending:
+        sortidx = sorted(range(len(self.channelmap)), key=lambda k: self.channelmap[k])
+        data = data[:, sortidx]
 
         while data.nbytes > 0:
             towrite = self._render_available_frames()
@@ -621,11 +643,15 @@ class _Recorder(_AudioClient):
             if toread > 0:
                 data_ptr, nframes, flags = self._capture_buffer()
                 if data_ptr != _ffi.NULL:
-                    chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*self.channels), dtype='float32')
+                    chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
                 if nframes > 0:
                     self._capture_release(nframes)
                     captured_data.append(chunk)
                     captured_frames += nframes
             else:
                 time.sleep(0.001)
-        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
+        data = numpy.reshape(numpy.concatenate(captured_data), [-1, len(set(self.channelmap))])
+
+        # internally, channels numbers were always ascending:
+        sortidx = sorted(range(len(self.channelmap)), key=lambda k: self.channelmap[k])
+        return data[:, sortidx]

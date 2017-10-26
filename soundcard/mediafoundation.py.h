@@ -202,12 +202,12 @@ typedef struct IAudioClientVtbl {
     HRESULT ( __stdcall *QueryInterface )(IAudioClient * This, REFIID riid, void **ppvObject);
     ULONG ( __stdcall *AddRef )(IAudioClient * This);
     ULONG ( __stdcall *Release )(IAudioClient * This);
-    HRESULT ( __stdcall *Initialize )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, DWORD StreamFlags, REFERENCE_TIME hnsBufferDuration, REFERENCE_TIME hnsPeriodicity, const WAVEFORMATEX *pFormat, LPCGUID AudioSessionGuid);
+    HRESULT ( __stdcall *Initialize )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, DWORD StreamFlags, REFERENCE_TIME hnsBufferDuration, REFERENCE_TIME hnsPeriodicity, const WAVEFORMATEXTENSIBLE *pFormat, LPCGUID AudioSessionGuid);
     HRESULT ( __stdcall *GetBufferSize )(IAudioClient * This, UINT32 *pNumBufferFrames);
     HRESULT ( __stdcall *GetStreamLatency )(IAudioClient * This, REFERENCE_TIME *phnsLatency);
     HRESULT ( __stdcall *GetCurrentPadding )(IAudioClient * This, UINT32 *pNumPaddingFrames);
-    HRESULT ( __stdcall *IsFormatSupported )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, const WAVEFORMATEX *pFormat, WAVEFORMATEX **ppClosestMatch);
-    HRESULT ( __stdcall *GetMixFormat )(IAudioClient * This, WAVEFORMATEX **ppDeviceFormat);
+    HRESULT ( __stdcall *IsFormatSupported )(IAudioClient * This, AUDCLNT_SHAREMODE ShareMode, const WAVEFORMATEXTENSIBLE *pFormat, WAVEFORMATEXTENSIBLE **ppClosestMatch);
+    HRESULT ( __stdcall *GetMixFormat )(IAudioClient * This, WAVEFORMATEXTENSIBLE **ppDeviceFormat);
     HRESULT ( __stdcall *GetDevicePeriod )(IAudioClient * This, REFERENCE_TIME *phnsDefaultDevicePeriod, REFERENCE_TIME *phnsMinimumDevicePeriod);
     HRESULT ( __stdcall *Start )(IAudioClient * This);
     HRESULT ( __stdcall *Stop )(IAudioClient * This);
