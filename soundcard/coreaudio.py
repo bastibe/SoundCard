@@ -127,7 +127,9 @@ class _Speaker(_Soundcard):
     audio.
 
     Properties:
-    - `channels`: the number of available channels
+    - `channels`: either the number of channels to play, or a list
+      of channel indices. Index -1 is silence, and subsequent numbers
+      are channel numbers (left, right, center, ...)
     - `name`: the name of the soundcard
 
     """
@@ -146,11 +148,15 @@ class _Speaker(_Soundcard):
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    def player(self, samplerate, blocksize=None):
-        return _Player(self._id, samplerate, self.channels, blocksize)
+    def player(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Player(self._id, samplerate, channels, blocksize)
 
-    def play(self, data, samplerate, blocksize=None):
-        with self.player(samplerate, blocksize) as p:
+    def play(self, data, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        with self.player(samplerate, channels, blocksize) as p:
             p.play(data)
 
 
@@ -162,7 +168,9 @@ class _Microphone(_Soundcard):
     continuous audio.
 
     Properties:
-    - `channels`: the number of available channels
+    - `channels`: either the number of channels to record, or a list
+      of channel indices. Index -1 is silence, and subsequent numbers
+      are channel numbers (left, right, center, ...)
     - `name`: the name of the soundcard
 
     """
@@ -181,11 +189,15 @@ class _Microphone(_Soundcard):
     def __repr__(self):
         return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
-    def recorder(self, samplerate, blocksize=None):
-        return _Recorder(self._id, samplerate, self.channels, blocksize)
+    def recorder(self, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        return _Recorder(self._id, samplerate, channels, blocksize)
 
-    def record(self, numframes, samplerate, blocksize=None):
-        with self.recorder(samplerate, blocksize) as p:
+    def record(self, numframes, samplerate, channels=None, blocksize=None):
+        if channels is None:
+            channels = self.channels
+        with self.recorder(samplerate, channels, blocksize) as p:
             return p.record(numframes)
 
 
@@ -328,7 +340,7 @@ class _Player:
 
         """
 
-        data = np.asarray(data*0.5, dtype="float32")
+        data = np.asarray(data*0.5, dtype="float32", order='C')
         data[data>1] = 1
         data[data<-1] = -1
         idx = 0
@@ -412,18 +424,24 @@ class _AudioUnit:
                             .format(self.blocksizerange[0],
                                     self.blocksizerange[1]))
 
-        self.channels = channels
+        if isinstance(channels, collections.Iterable):
+            self.channels = len(channels)
+            self.channelmap = channels
+        elif isinstance(channels, int):
+            self.channels = channels
+        else:
+            raise TypeError('channels must be iterable or integer')
 
-    def _set_property(self, property, scope, element, data):
+    def _set_property(self, property, scope, element, data, num_elements=1):
         status = _au.AudioUnitSetProperty(self.ptr[0],
                                           property, scope, element,
-                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname))
+                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
 
-    def _get_property(self, property, scope, element, type):
+    def _get_property(self, property, scope, element, type, num_elements=1):
         data = _ffi.new(type)
-        datasize = _ffi.new("UInt32*", _ffi.sizeof(_ffi.typeof(data).item.cname))
+        datasize = _ffi.new("UInt32*", _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
         status = _au.AudioUnitGetProperty(self.ptr[0],
                                           property, scope, element,
                                           data, datasize)
@@ -506,6 +524,25 @@ class _AudioUnit:
         self._set_property(
             _cac.kAudioUnitProperty_StreamFormat,
             self._au_scope, self._au_element, streamformat)
+
+    @property
+    def channelmap(self):
+        scope = {2: 1, 1: 2}[self._au_scope]
+        map = self._get_property(
+            _cac.kAudioOutputUnitProperty_ChannelMap,
+            scope, 0,
+            "SInt32[{}]".format(self.channels),
+            num_elements=2)
+        return list(map)
+
+    @channelmap.setter
+    def channelmap(self, map):
+        scope = {2: 1, 1: 2}[self._au_scope]
+        map = _ffi.new("SInt32[]", map)
+        self._set_property(
+            _cac.kAudioOutputUnitProperty_ChannelMap,
+            scope, self._au_element,
+            map, num_elements=2)
 
     @property
     def blocksizerange(self):
