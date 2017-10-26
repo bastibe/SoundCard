@@ -300,7 +300,7 @@ class _Player(_Stream):
 
         """
 
-        data = numpy.array(data, dtype='float32')
+        data = numpy.array(data, dtype='float32', order='C')
         if data.ndim == 1:
             data = data[:, None] # force 2d
         if data.ndim != 2:
