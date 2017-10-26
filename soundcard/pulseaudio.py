@@ -128,6 +128,7 @@ class _Speaker(_SoundCard):
       of channel indices. Index 0 is the mono mixture of all channels,
       and subsequent numbers are channel numbers (left, right, center,
       ...)
+    - `name`: the name of the soundcard
 
     """
 
@@ -166,6 +167,7 @@ class _Microphone(_SoundCard):
       of channel indices. Index 0 is the mono mixture of all channels,
       and subsequent numbers are channel numbers (left, right, center,
       ...)
+    - `name`: the name of the soundcard
 
     """
 
