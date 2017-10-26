@@ -125,7 +125,7 @@ class _Speaker(_SoundCard):
 
     Properties:
     - `channels`: either the number of channels to record, or a list
-      of channel indices. Index 0 is the mono mixture of all channels,
+      of channel indices. Index -1 is the mono mixture of all channels,
       and subsequent numbers are channel numbers (left, right, center,
       ...)
     - `name`: the name of the soundcard
@@ -164,7 +164,7 @@ class _Microphone(_SoundCard):
 
     Properties:
     - `channels`: either the number of channels to record, or a list
-      of channel indices. Index 0 is the mono mixture of all channels,
+      of channel indices. Index -1 is the mono mixture of all channels,
       and subsequent numbers are channel numbers (left, right, center,
       ...)
     - `name`: the name of the soundcard
@@ -229,7 +229,7 @@ class _Stream:
         channelmap = _pa.pa_channel_map_init_auto(channelmap, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
         if isinstance(self.channels, collections.Iterable):
             for idx, ch in enumerate(self.channels):
-                channelmap.map[idx] = ch
+                channelmap.map[idx] = ch+1
         if not _pa.pa_channel_map_valid(channelmap):
             raise RuntimeError('invalid channel map')
 
