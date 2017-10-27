@@ -48,10 +48,18 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
         sp.play(data)
 ```
 
+## Channel Maps
+
+Some professional sound cards have large numbers of channels. If you want to record or play only a subset of those channels, you can specify a channel map. For playback, a channel map of `[0, 3, 4]` will play three-channel audio data on the physical channels one, four, and five. For recording, a channel map of `[0, 3, 4]` will return three-channel audio data recorded from the physical channels one, four, and five. 
+
+Currently, channel maps do not work on Windows (beyond reordering). The API does not seem to support it. If you know how to implement channel maps on Windows, I'd be grateful for a hint!
+
+In addition, pulseaudio/Linux defines channel `-1` as the mono mix of all channels for both playback and recording. CoreAudio/macOS defines channel `-1` as silence for both playback and recording.
+
 ## Known Issues:
 
 * macOS/coreaudio currently does not play/record the first block correctly. The reason for this is still unknown.
-* Channel maps are not implemented on Windows. Currently, only Linux/pulseaudio and macOS/coreaudio support channel maps.
+* Windows/WASAPI does not support channel maps beyond reordering.
 * Error messages often report some internal CFFI/backend errors. This will be improved in the future.
 * Documentation is not great yet. This will be improved in the future.
 

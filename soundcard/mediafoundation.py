@@ -46,6 +46,7 @@ class _COMLibrary:
         E_POINTER = 0x80004003
         E_OUTOFMEMORY = 0x8007000e
         E_INVALIDARG = 0x80070057
+        AUDCLNT_E_UNSUPPORTED_FORMAT = 0x88890008
         if hresult == S_OK:
             return
         elif hresult+2**32 == E_NOINTERFACE:
@@ -59,6 +60,8 @@ class _COMLibrary:
             raise RuntimeError("invalid argument")
         elif hresult+2**32 == E_OUTOFMEMORY:
             raise RuntimeError("out of memory")
+        elif hresult+2**32 == AUDCLNT_E_UNSUPPORTED_FORMAT:
+            raise RuntimeError("unsupported format")
         else:
             raise RuntimeError('Error {}'.format(hex(hresult+2**32)))
 
@@ -427,12 +430,17 @@ class _AudioClient:
 
     def __init__(self, ptr, samplerate, channels, blocksize):
         self._ptr = ptr
+
         if isinstance(channels, int):
             self.channelmap = list(range(channels))
         elif isinstance(channels, collections.Iterable):
             self.channelmap = channels
         else:
             raise TypeError('channels must be iterable or integer')
+
+        if list(range(len(set(self.channelmap)))) != sorted(list(set(self.channelmap))):
+            raise TypeError('Due to limitations of WASAPI, channel maps on Windows '
+                            'must be a combination of `range(0, x)`.')
 
         if blocksize is None:
             blocksize = self.deviceperiod[0]*samplerate
@@ -455,13 +463,17 @@ class _AudioClient:
         # the last four bytes seem to vary randomly
 
         channels = len(set(self.channelmap))
+        channelmask = 0
+        for ch in self.channelmap:
+            channelmask |= 1<<ch
         ppMixFormat[0][0].Format.nChannels=channels
         ppMixFormat[0][0].Format.nSamplesPerSec=int(samplerate)
         ppMixFormat[0][0].Format.nAvgBytesPerSec=int(samplerate) * channels * 4
         ppMixFormat[0][0].Format.nBlockAlign=channels * 4
         ppMixFormat[0][0].Format.wBitsPerSample=32
         ppMixFormat[0][0].Samples=dict(wValidBitsPerSample=32)
-        ppMixFormat[0][0].dwChannelMask=sum(1<<ch for ch in self.channelmap)
+        # does not work:
+        # ppMixFormat[0][0].dwChannelMask=channelmask
 
         sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
         #             resample   | remix      | better-SRC | nopersist
@@ -565,13 +577,14 @@ class _Player(_AudioClient):
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
-            data = numpy.tile(data, [1, len(self.channelmap)])
-        if data.shape[1] != len(self.channelmap):
-            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
+            data = numpy.tile(data, [1, len(set(self.channelmap))])
 
-        # internally, channels numbers are always ascending:
+        # internally, channel numbers are always ascending:
         sortidx = sorted(range(len(self.channelmap)), key=lambda k: self.channelmap[k])
         data = data[:, sortidx]
+
+        if data.shape[1] != len(set(self.channelmap)):
+            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
 
         while data.nbytes > 0:
             towrite = self._render_available_frames()
@@ -665,7 +678,4 @@ class _Recorder(_AudioClient):
             else:
                 time.sleep(0.001)
         data = numpy.reshape(numpy.concatenate(captured_data), [-1, len(set(self.channelmap))])
-
-        # internally, channels numbers were always ascending:
-        sortidx = sorted(range(len(self.channelmap)), key=lambda k: self.channelmap[k])
-        return data[:, sortidx]
+        return data[:, self.channelmap]
