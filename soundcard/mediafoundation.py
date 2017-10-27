@@ -436,24 +436,36 @@ class _AudioClient:
 
         if blocksize is None:
             blocksize = self.deviceperiod[0]*samplerate
-        streamflags = 0x00100000 | 0x80000000 | 0x08000000 # rate-adjust | auto-convert-PCM | SRC-default-quality The
+
         ppMixFormat = _ffi.new('WAVEFORMATEXTENSIBLE**')
         hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat)
         _com.check_error(hr)
-        ppMixFormat[0][0].Format.nChannels = len(set(self.channelmap))
-        ppMixFormat[0][0].Format.wFormatTag = 0x0003 # IEEE float
-        ppMixFormat[0][0].Format.wBitsPerSample = 32
-        ppMixFormat[0][0].Format.nSamplesPerSec = int(samplerate)
-        ppMixFormat[0][0].Format.nBlockAlign = ppMixFormat[0][0].Format.nChannels * ppMixFormat[0][0].Format.wBitsPerSample // 8
-        ppMixFormat[0][0].Format.nAvgBytesPerSec = ppMixFormat[0][0].Format.nSamplesPerSec * ppMixFormat[0][0].Format.nBlockAlign
-        ppMixFormat[0][0].Format.cbSize = 0
-        ppMixFormat[0][0].Samples.wValidBitsPerSample = 32
-        channelmask = 0
-        for ch in self.channelmap:
-            channelmask |= 1 << ch
-        ppMixFormat[0][0].dwChannelMask = channelmask
-        ppMixFormat[0][0].SubFormat = _guidof("{00000003-0000-0010-8000-00aa00389b71}")[0] # PCM (shared/ksmedia.h)
-        sharemode = 0 # shared (um/AudioSessionTypes:33)
+
+        # It's a WAVEFORMATEXTENSIBLE with room for KSDATAFORMAT_SUBTYPE_IEEE_FLOAT:
+        assert ppMixFormat[0][0].Format.wFormatTag == 0xFFFE
+        assert ppMixFormat[0][0].Format.cbSize == 22
+
+        # The data format is float32:
+        # These values were found empirically, and I don't know why they work.
+        # The program crashes if these values are different
+        assert ppMixFormat[0][0].SubFormat.Data1 == 0x100000
+        assert ppMixFormat[0][0].SubFormat.Data2 == 0x0080
+        assert ppMixFormat[0][0].SubFormat.Data3 == 0xaa00
+        assert [int(x) for x in ppMixFormat[0][0].SubFormat.Data4[0:4]] == [0, 56, 155, 113]
+        # the last four bytes seem to vary randomly
+
+        channels = len(set(self.channelmap))
+        ppMixFormat[0][0].Format.nChannels=channels
+        ppMixFormat[0][0].Format.nSamplesPerSec=int(samplerate)
+        ppMixFormat[0][0].Format.nAvgBytesPerSec=int(samplerate) * channels * 4
+        ppMixFormat[0][0].Format.nBlockAlign=channels * 4
+        ppMixFormat[0][0].Format.wBitsPerSample=32
+        ppMixFormat[0][0].Samples=dict(wValidBitsPerSample=32)
+        ppMixFormat[0][0].dwChannelMask=sum(1<<ch for ch in self.channelmap)
+
+        sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
+        #             resample   | remix      | better-SRC | nopersist
+        streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
         bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
         _com.check_error(hr)
@@ -525,6 +537,7 @@ class _Player(_AudioClient):
         hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
         _com.check_error(hr)
         _com.release(self._ppRenderClient)
+        _com.release(self._ptr)
 
     def play(self, data):
         """Play some audio data.
@@ -620,6 +633,7 @@ class _Recorder(_AudioClient):
         hr = self._ptr[0][0].lpVtbl.Stop(self._ptr[0])
         _com.check_error(hr)
         _com.release(self._ppCaptureClient)
+        _com.release(self._ptr)
 
     def record(self, numframes):
         """Record some audio data.

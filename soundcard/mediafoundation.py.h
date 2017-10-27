@@ -160,7 +160,7 @@ struct tag_inner_BLOB_PROPVARIANT {
     BLOB blob;
 };
 
-typedef struct tWAVEFORMATEX {
+typedef struct WAVEFORMATEX {
     WORD    wFormatTag;        /* format type */
     WORD    nChannels;         /* number of channels (i.e. mono, stereo...) */
     DWORD   nSamplesPerSec;    /* sample rate */
