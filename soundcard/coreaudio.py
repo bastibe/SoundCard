@@ -763,13 +763,13 @@ class _Recorder:
     def __exit__(self, exc_type, exc_value, traceback):
         self._au.close()
 
-    def record(self, num_frames):
+    def record(self, numframes):
         """Record some audio data.
 
         The data will be returned as a `frames × channels` float32
         numpy array.
 
-        This function will wait until `num_frames` frames have been
+        This function will wait until `numframes` frames have been
         recorded. However, the audio backend holds the final authority
         over how much audio data can be read at a time, so the
         returned amount of data will often be slightly larger than
@@ -778,7 +778,7 @@ class _Recorder:
 
         """
 
-        while sum(len(q) for q in self._queue) < (num_frames*self._au.channels)/self._au.resample:
+        while sum(len(q) for q in self._queue) < (numframes*self._au.channels)/self._au.resample:
             time.sleep(0.001)
 
         data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
