@@ -336,13 +336,13 @@ class _Recorder(_Stream):
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
 
-    def record(self, num_frames):
+    def record(self, numframes):
         """Record some audio data.
 
         The data will be returned as a `frames × channels` float32
         numpy array.
 
-        This function will wait until `num_frames` frames have been
+        This function will wait until `numframes` frames have been
         recorded. However, the audio backend holds the final authority
         over how much audio data can be read at a time, so the
         returned amount of data will often be slightly larger than
@@ -355,7 +355,7 @@ class _Recorder(_Stream):
         captured_data = []
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while captured_frames < num_frames:
+        while captured_frames < numframes:
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
