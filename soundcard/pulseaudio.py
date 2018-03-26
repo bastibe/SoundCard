@@ -332,6 +332,9 @@ class _Recorder(_Stream):
     after it is closed.
 
     """
+    captured_frames = 0
+    captured_data = []
+    last_record = time.time()
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
@@ -351,11 +354,13 @@ class _Recorder(_Stream):
 
         """
 
-        captured_frames = 0
-        captured_data = []
+        if self.last_record + time.time() > numframes / self._samplerate:
+            self.captured_data = []
+            self.captured_frames = 0
+
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while captured_frames < numframes:
+        while self.captured_frames < numframes:
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
@@ -367,11 +372,17 @@ class _Recorder(_Stream):
                     chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
                 if nbytes_ptr[0] > 0:
                     self._pulse._pa_stream_drop(self.stream)
-                    captured_data.append(chunk)
-                    captured_frames += len(chunk)/self.channels
+                    self.captured_data.append(chunk)
+                    self.captured_frames += len(chunk)/self.channels
             else:
                 time.sleep(0.001)
-        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
+        self.last_record = time.time()
+        self.captured_data = numpy.concatenate(self.captured_data)
+        to_return, self.captured_data = numpy.split(self.captured_data,
+                                                    [int(numframes*self.channels)])
+        self.captured_frames = (self.captured_data.size / self.channels) // numframes
+        self.captured_data = [self.captured_data]
+        return numpy.reshape(to_return, [-1, self.channels])
 
 
 def _lock(func):
