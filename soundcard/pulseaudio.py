@@ -12,7 +12,6 @@ import collections
 import time
 import re
 import numpy
-import queue
 
 
 def all_speakers():
