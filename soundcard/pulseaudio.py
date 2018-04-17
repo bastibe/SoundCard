@@ -336,7 +336,7 @@ class _Recorder(_Stream):
                  name='outputstream', fix_blocksize=False):
         super(_Recorder, self).__init__(id, samplerate, channels, blocksize, name)
         self._fix_blocksize = fix_blocksize
-        self._pending_chunk = numpy.zeros((0, self.channels))
+        self._pending_chunk = numpy.zeros((0, ))
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
@@ -356,8 +356,8 @@ class _Recorder(_Stream):
 
         """
 
-        captured_frames = self._pending_chunk.shape[0]
-        captured_data = [self._pending_chunk] if self.fix_blocksize else []
+        captured_frames = self._pending_chunk.shape[0] / self.channels
+        captured_data = [self._pending_chunk] if self._fix_blocksize else []
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
         while captured_frames < numframes:
@@ -377,12 +377,17 @@ class _Recorder(_Stream):
             else:
                 time.sleep(0.001)
 
-        if self.fix_blocksize:
-            to_split = (len(chunk) - captured_frames + numframes) * self.channels
-            last_chunk = captured_data.pop()
-            keep, self._pending_chunk = np.split(last_chunk, to_split)
-            captures_data.append(keep)
-        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
+        if self._fix_blocksize:
+            if len(captured_data) == 1:
+                keep , self._pending_chunk = numpy.split(self._pending_chunk,
+                                                    [int(numframes * self.channels)])
+                return numpy.reshape(keep, [-1, self.channels])
+            else:
+                to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
+                last_chunk = captured_data.pop()
+                keep, self._pending_chunk = numpy.split(last_chunk, [to_split])
+                captured_data.append(keep)
+                return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
     def flush(self):
         """Returns the last pending chunk
@@ -390,8 +395,8 @@ class _Recorder(_Stream):
         After using `record` with `fix_blocksize=True`, this will return the
         last incomplete chunk and clean it.
         """
-        last_chunk = np.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = np.zeros((0, self.channels))
+        last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
+        self._pending_chunk = numpy.zeros((0, ))
         return last_chunk
 
 
