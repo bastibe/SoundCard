@@ -342,8 +342,8 @@ class _Recorder(_Stream):
     def _record_chunk(self):
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
         while 1:
+        readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
                 nbytes_ptr[0] = 0
