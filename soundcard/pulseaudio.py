@@ -332,21 +332,18 @@ class _Recorder(_Stream):
 
     """
 
-    def __init__(self, id, samplerate, channels, blocksize=None,
-                 name='outputstream', fix_blocksize=False):
-        super(_Recorder, self).__init__(id, samplerate, channels, blocksize, name)
+    def __init__(self, *args, **kwargs):
+        super(_Recorder, self).__init__(*args, **kwargs)
         self._pending_chunk = numpy.zeros((0, ))
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
 
-    def _record_chunk(self, numframes):
-        captured_data = []
-        captured_frames = 0
+    def _record_chunk(self):
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while captured_frames < numframes:
-            readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
+        readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
+        while 1:
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
                 nbytes_ptr[0] = 0
@@ -357,30 +354,11 @@ class _Recorder(_Stream):
                     chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
                 if nbytes_ptr[0] > 0:
                     self._pulse._pa_stream_drop(self.stream)
-                    captured_data.append(chunk)
-                    captured_frames += len(chunk)/self.channels
+                    return chunk
             else:
                 time.sleep(0.001)
-        return captured_data, captured_frames, len(chunk)
 
-    def record_chunk(self, numframes):
-        """Record a chunk of audio data.
-
-        The data will be returned as a `frames × channels` float32
-        numpy array.
-
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
-
-        """
-        return numpy.reshape(numpy.concatenate(self._record_chunk(numframes)[0]),
-                                               [-1, self.channels])
-
-    def record(self, numframes):
+    def record(self, numframes=None):
         """Record some audio data.
 
         The data will be returned as a `frames × channels` float32
@@ -392,22 +370,28 @@ class _Recorder(_Stream):
         The buffering is made inside the function so that exactly `numframes`
         samples are returned at every call.
         For real-time settings, set the blocksize attribute of the recorder
-        object to be much smaller than the requested number of frames.
+        object to be smaller than the requested number of frames.
 
         """
-        captured_data = [self._pending_chunk]
-        captured_frames = self._pending_chunk.shape[0] / self.channels
-        if captured_frames >= numframes:
-            keep , self._pending_chunk = numpy.split(self._pending_chunk,
-            [int(numframes * self.channels)])
-            return numpy.reshape(keep, [-1, self.channels])
+        if numframes:
+            captured_data = [self._pending_chunk]
+            captured_frames = self._pending_chunk.shape[0] / self.channels
+            if captured_frames >= numframes:
+                keep , self._pending_chunk = numpy.split(self._pending_chunk,
+                [int(numframes * self.channels)])
+                return numpy.reshape(keep, [-1, self.channels])
+            else:
+                while captured_frames < numframes:
+                    chunk = self._record_chunk()
+                    captured_data.append(chunk)
+                    captured_frames += len(chunk)/self.channels
+                to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
+                _ = captured_data.pop()
+                keep, self._pending_chunk = numpy.split(chunk, [to_split])
+                captured_data.append(keep)
+                return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
         else:
-            captured_data, captured_frames, chunk_len = self._record_chunk(numframes)
-            to_split = int(chunk_len - (captured_frames - numframes) * self.channels)
-            last_chunk = captured_data.pop()
-            keep, self._pending_chunk = numpy.split(last_chunk, [to_split])
-            captured_data.append(keep)
-            return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
+            return numpy.reshape(self._record_chunk(), [-1, self.channels])
 
     def flush(self):
         """Returns the last pending chunk
