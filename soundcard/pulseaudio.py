@@ -340,6 +340,12 @@ class _Recorder(_Stream):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
 
     def _record_chunk(self):
+        '''Record one chunk of audio data, as returned by pulseaudio
+
+        The data will be returned as a 1D numpy array, which will be used by
+        the `record` method. This function is the interface of the `_Recorder`
+        object with pulseaudio
+        '''
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
         while True:
@@ -376,7 +382,7 @@ class _Recorder(_Stream):
         with the new recorded block.
         (If you want to empty the last buffered frame instead, use `flush`)
         """
-        if not numframes:
+        if numframes is None:
             return np.reshape(np.concatenate([self.flush(), self._record_chunk()],
                               [-1, self.channels]))
         else:
@@ -396,7 +402,7 @@ class _Recorder(_Stream):
                 return np.reshape(np.concatenate(captured_data), [-1, self.channels])
 
     def flush(self):
-        """Returns the last pending chunk
+        """Return the last pending chunk
         After using the record method, this will return the last incomplete
         chunk and delete it.
 
