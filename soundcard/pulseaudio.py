@@ -11,7 +11,7 @@ _pa = _ffi.dlopen('pulse')
 import collections
 import time
 import re
-import numpy
+import numpy as np
 
 
 def all_speakers():
@@ -300,13 +300,13 @@ class _Player(_Stream):
 
         """
 
-        data = numpy.array(data, dtype='float32', order='C')
+        data = np.array(data, dtype='float32', order='C')
         if data.ndim == 1:
             data = data[:, None] # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
-            data = numpy.tile(data, [1, self.channels])
+            data = np.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         bufattr = self._pulse._pa_stream_get_buffer_attr(self.stream)
@@ -334,7 +334,7 @@ class _Recorder(_Stream):
 
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
-        self._pending_chunk = numpy.zeros((0, ))
+        self._pending_chunk = np.zeros((0, ))
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
@@ -342,16 +342,16 @@ class _Recorder(_Stream):
     def _record_chunk(self):
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while 1:
+        while True:
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
                 nbytes_ptr[0] = 0
                 self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
                 if data_ptr[0] != _ffi.NULL:
-                    chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+                    chunk = np.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
                 if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-                    chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+                    chunk = np.zeros(nbytes_ptr[0]//4, dtype='float32')
                 if nbytes_ptr[0] > 0:
                     self._pulse._pa_stream_drop(self.stream)
                     return chunk
@@ -359,48 +359,50 @@ class _Recorder(_Stream):
                 time.sleep(0.001)
 
     def record(self, numframes=None):
-        """Record some audio data.
+        """Record a block of audio data.
 
-        The data will be returned as a `frames × channels` float32
-        numpy array.
+        The data will be returned as a frames × channels float32 numpy array.
+        This function will wait until numframes frames have been recorded.
+        If numframes is given, it will return exactly `numframes` frames,
+        and buffer the rest for later.
 
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time.
-        The buffering is made inside the function so that exactly `numframes`
-        samples are returned at every call.
-        For real-time settings, set the blocksize attribute of the recorder
-        object to be smaller than the requested number of frames.
+        If numframes is None, it will return whatever the audio backend
+        has available right now.
+        Use this if latency must be kept to a minimum, but be aware that
+        block sizes can change at the whims of the audio backend.
 
+        If using `record` with `numframes=None` after using `record` with a
+        required `numframes`, the last buffered frame will be returned along
+        with the new recorded block.
+        (If you want to empty the last buffered frame instead, use `flush`)
         """
-        if numframes:
+        if not numframes:
+            return np.reshape(np.concatenate([self.flush(), self._record_chunk()],
+                              [-1, self.channels]))
+        else:
             captured_data = [self._pending_chunk]
             captured_frames = self._pending_chunk.shape[0] / self.channels
             if captured_frames >= numframes:
-                keep , self._pending_chunk = numpy.split(self._pending_chunk,
-                [int(numframes * self.channels)])
-                return numpy.reshape(keep, [-1, self.channels])
+                keep, self._pending_chunk = np.split(self._pending_chunk,
+                                                     [int(numframes * self.channels)])
+                return np.reshape(keep, [-1, self.channels])
             else:
                 while captured_frames < numframes:
                     chunk = self._record_chunk()
                     captured_data.append(chunk)
                     captured_frames += len(chunk)/self.channels
                 to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
-                _ = captured_data.pop()
-                keep, self._pending_chunk = numpy.split(chunk, [to_split])
-                captured_data.append(keep)
-                return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
-        else:
-            return numpy.reshape(self._record_chunk(), [-1, self.channels])
+                captured_data[-1], self._pending_chunk = np.split(captured_data[-1], [to_split])
+                return np.reshape(np.concatenate(captured_data), [-1, self.channels])
 
     def flush(self):
         """Returns the last pending chunk
-        After using the record method , this will return the last incomplete
+        After using the record method, this will return the last incomplete
         chunk and delete it.
 
         """
-        last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = numpy.zeros((0, ))
+        last_chunk = np.reshape(self._pending_chunk, [-1, self.channels])
+        self._pending_chunk = np.zeros((0, ))
         return last_chunk
 
 
