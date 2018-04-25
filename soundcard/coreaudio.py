@@ -426,12 +426,15 @@ class _AudioUnit:
             self.resample = 1
             self.samplerate = samplerate
 
-        if self.blocksizerange[0] <= blocksize <= self.blocksizerange[1]:
+        # there are two maximum block sizes for some reason:
+        maxblocksize = min(self.blocksizerange[1],
+                           self.maxblocksize)
+        if self.blocksizerange[0] <= blocksize <= maxblocksize:
             self.blocksize = blocksize
         else:
             raise TypeError("blocksize must be between {} and {}"
                             .format(self.blocksizerange[0],
-                                    self.blocksizerange[1]))
+                                    maxblocksize))
 
         if isinstance(channels, collections.Iterable):
             self.channels = len(channels)
@@ -533,6 +536,14 @@ class _AudioUnit:
         self._set_property(
             _cac.kAudioUnitProperty_StreamFormat,
             self._au_scope, self._au_element, streamformat)
+
+    @property
+    def maxblocksize(self):
+        maxblocksize = self._get_property(
+            _cac.kAudioUnitProperty_MaximumFramesPerSlice,
+            _cac.kAudioUnitScope_Global, 0, "UInt32*")
+        assert maxblocksize
+        return maxblocksize[0]
 
     @property
     def channelmap(self):
