@@ -11,7 +11,7 @@ _pa = _ffi.dlopen('pulse')
 import collections
 import time
 import re
-import numpy
+import numpy as np
 
 
 def all_speakers():
@@ -300,13 +300,13 @@ class _Player(_Stream):
 
         """
 
-        data = numpy.array(data, dtype='float32', order='C')
+        data = np.array(data, dtype='float32', order='C')
         if data.ndim == 1:
             data = data[:, None] # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
-            data = numpy.tile(data, [1, self.channels])
+            data = np.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         bufattr = self._pulse._pa_stream_get_buffer_attr(self.stream)
@@ -318,7 +318,6 @@ class _Player(_Stream):
             bytes = data[:nwrite].ravel().tostring()
             self._pulse._pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
             data = data[nwrite:]
-
 
 class _Recorder(_Stream):
     """A context manager for an active input stream.
@@ -333,45 +332,84 @@ class _Recorder(_Stream):
 
     """
 
+    def __init__(self, *args, **kwargs):
+        super(_Recorder, self).__init__(*args, **kwargs)
+        self._pending_chunk = np.zeros((0, ))
+
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
 
-    def record(self, numframes):
-        """Record some audio data.
+    def _record_chunk(self):
+        '''Record one chunk of audio data, as returned by pulseaudio
 
-        The data will be returned as a `frames × channels` float32
-        numpy array.
-
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
-
-        """
-
-        captured_frames = 0
-        captured_data = []
+        The data will be returned as a 1D numpy array, which will be used by
+        the `record` method. This function is the interface of the `_Recorder`
+        object with pulseaudio
+        '''
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while captured_frames < numframes:
+        while True:
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
             if readable_bytes > 0:
                 data_ptr[0] = _ffi.NULL
                 nbytes_ptr[0] = 0
                 self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
                 if data_ptr[0] != _ffi.NULL:
-                    chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+                    chunk = np.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
                 if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-                    chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+                    chunk = np.zeros(nbytes_ptr[0]//4, dtype='float32')
                 if nbytes_ptr[0] > 0:
                     self._pulse._pa_stream_drop(self.stream)
-                    captured_data.append(chunk)
-                    captured_frames += len(chunk)/self.channels
+                    return chunk
             else:
                 time.sleep(0.001)
-        return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
+
+    def record(self, numframes=None):
+        """Record a block of audio data.
+
+        The data will be returned as a frames × channels float32 numpy array.
+        This function will wait until numframes frames have been recorded.
+        If numframes is given, it will return exactly `numframes` frames,
+        and buffer the rest for later.
+
+        If numframes is None, it will return whatever the audio backend
+        has available right now.
+        Use this if latency must be kept to a minimum, but be aware that
+        block sizes can change at the whims of the audio backend.
+
+        If using `record` with `numframes=None` after using `record` with a
+        required `numframes`, the last buffered frame will be returned along
+        with the new recorded block.
+        (If you want to empty the last buffered frame instead, use `flush`)
+        """
+        if numframes is None:
+            return np.reshape(np.concatenate([self.flush(), self._record_chunk()],
+                              [-1, self.channels]))
+        else:
+            captured_data = [self._pending_chunk]
+            captured_frames = self._pending_chunk.shape[0] / self.channels
+            if captured_frames >= numframes:
+                keep, self._pending_chunk = np.split(self._pending_chunk,
+                                                     [int(numframes * self.channels)])
+                return np.reshape(keep, [-1, self.channels])
+            else:
+                while captured_frames < numframes:
+                    chunk = self._record_chunk()
+                    captured_data.append(chunk)
+                    captured_frames += len(chunk)/self.channels
+                to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
+                captured_data[-1], self._pending_chunk = np.split(captured_data[-1], [to_split])
+                return np.reshape(np.concatenate(captured_data), [-1, self.channels])
+
+    def flush(self):
+        """Return the last pending chunk
+        After using the record method, this will return the last incomplete
+        chunk and delete it.
+
+        """
+        last_chunk = np.reshape(self._pending_chunk, [-1, self.channels])
+        self._pending_chunk = np.zeros((0, ))
+        return last_chunk
 
 
 def _lock(func):
