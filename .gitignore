@@ -1,0 +1,7 @@
+*.DS_Store
+*.pyc
+
+temp/
+build/
+dist/
+SoundCard.egg-info/
