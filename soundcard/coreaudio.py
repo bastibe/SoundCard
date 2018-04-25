@@ -730,6 +730,7 @@ class _Recorder:
 
     def __enter__(self):
         self._queue = collections.deque()
+        self._pending_chunk = np.zeros([0])
 
         channels = self._au.channels
         au = self._au.ptr[0]
@@ -767,31 +768,53 @@ class _Recorder:
     def __exit__(self, exc_type, exc_value, traceback):
         self._au.close()
 
-    def record(self, numframes):
-        """Record some audio data.
+    def _record_chunk(self):
+        """Record one chunk of audio data, as returned by core audio
 
-        The data will be returned as a `frames × channels` float32
-        numpy array.
+        The data will be returned as a 1D numpy array, which will be used by
+        the `record` method. This function is the interface of the `_Recorder`
+        object with core audio.
+        """
+        while not self._queue:
+            self._record_event.wait()
+            self._record_event.clear()
+        return self._queue.popleft()
 
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
+    def record(self, numframes=None):
+        """Record a block of audio data.
+
+        The data will be returned as a frames × channels float32 numpy array.
+        This function will wait until numframes frames have been recorded.
+        If numframes is given, it will return exactly `numframes` frames,
+        and buffer the rest for later.
+
+        If numframes is None, it will return whatever the audio backend
+        has available right now.
+        Use this if latency must be kept to a minimum, but be aware that
+        block sizes can change at the whims of the audio backend.
+
+        If using `record` with `numframes=None` after using `record` with a
+        required `numframes`, the last buffered frame will be returned along
+        with the new recorded block.
+        (If you want to empty the last buffered frame instead, use `flush`)
 
         """
 
-        blocks = []
-        recorded_frames = 0
-        required_frames = (numframes*self._au.channels)/self._au.resample
-        while recorded_frames < required_frames:
-            self._record_event.wait()
-            while self._queue: # empty the queue
-                block = self._queue.popleft()
+        if numframes is None:
+            blocks = [self._pending_chunk, self._record_chunk()]
+            self._pending_chunk = np.zeros([0])
+        else:
+            blocks = [self._pending_chunk]
+            self._pending_chunk = np.zeros([0])
+            recorded_frames = len(blocks[0])
+            required_frames = int((numframes*self._au.channels)/self._au.resample)
+            while recorded_frames < required_frames:
+                block = self._record_chunk()
                 blocks.append(block)
                 recorded_frames += len(block)
-            self._record_event.clear()
+            if recorded_frames > required_frames:
+                to_split = -(recorded_frames-required_frames)
+                blocks[-1], self._pending_chunk = np.split(blocks[-1], [to_split])
 
         data = np.concatenate(blocks)
 
@@ -805,3 +828,13 @@ class _Recorder:
             data = data.reshape([-1, self._au.channels])
 
         return data
+
+    def flush(self):
+        """Return the last pending chunk
+        After using the record method, this will return the last incomplete
+        chunk and delete it.
+
+        """
+        last_chunk = np.reshape(self._pending_chunk, [-1, self._au.channels])
+        self._pending_chunk = np.zeros([0])
+        return last_chunk
