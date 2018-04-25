@@ -5,6 +5,7 @@ import collections
 import time
 import re
 import math
+import threading
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -725,6 +726,7 @@ class _Recorder:
     def __init__(self, id, samplerate, channels, blocksize=None):
         self._au = _AudioUnit("input", id, samplerate, channels, blocksize)
         self._resampler = _Resampler(self._au.samplerate, samplerate, self._au.channels)
+        self._record_event = threading.Event()
 
     def __enter__(self):
         self._queue = collections.deque()
@@ -752,7 +754,9 @@ class _Recorder:
             if status != 0:
                 print('error during recording:', status)
 
+            data = np.frombuffer(_ffi.buffer(data), dtype='float32')
             self._queue.append(data)
+            self._record_event.set()
             return status
 
         self._au.set_callback(input_callback)
@@ -778,11 +782,18 @@ class _Recorder:
 
         """
 
-        while sum(len(q) for q in self._queue) < (numframes*self._au.channels)/self._au.resample:
-            time.sleep(0.001)
+        blocks = []
+        recorded_frames = 0
+        required_frames = (numframes*self._au.channels)/self._au.resample
+        while recorded_frames < required_frames:
+            self._record_event.wait()
+            while self._queue: # empty the queue
+                block = self._queue.popleft()
+                blocks.append(block)
+                recorded_frames += len(block)
+            self._record_event.clear()
 
-        data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
-        self._queue.clear()
+        data = np.concatenate(blocks)
 
         if self._au.channels != 1:
             data = data.reshape([-1, self._au.channels])
