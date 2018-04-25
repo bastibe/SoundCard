@@ -640,6 +640,7 @@ class _Recorder(_AudioClient):
         self._ppCaptureClient = self._capture_client()
         hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
         _com.check_error(hr)
+        self._pending_chunk = numpy.zeros([0])
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -648,34 +649,73 @@ class _Recorder(_AudioClient):
         _com.release(self._ppCaptureClient)
         _com.release(self._ptr)
 
-    def record(self, numframes):
-        """Record some audio data.
+    def _record_chunk(self):
+        """Record one chunk of audio data, as returned by WASAPI
 
-        The data will be returned as a `frames x channels` float32
-        numpy array.
-
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
+        The data will be returned as a 1D numpy array, which will be used by
+        the `record` method. This function is the interface of the `_Recorder`
+        object with WASAPI.
 
         """
 
-        captured_frames = 0
-        captured_data = []
-        while captured_frames < numframes:
-            toread = self._capture_available_frames()
-            if toread > 0:
-                data_ptr, nframes, flags = self._capture_buffer()
-                if data_ptr != _ffi.NULL:
-                    chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
-                if nframes > 0:
-                    self._capture_release(nframes)
-                    captured_data.append(chunk)
-                    captured_frames += nframes
-            else:
-                time.sleep(0.001)
-        data = numpy.reshape(numpy.concatenate(captured_data), [-1, len(set(self.channelmap))])
+        while not self._capture_available_frames():
+            time.sleep(0.001)
+        data_ptr, nframes, flags = self._capture_buffer()
+        if data_ptr != _ffi.NULL:
+            chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
+        else:
+            raise RuntimeError('Could not create capture buffer')
+        if nframes > 0:
+            self._capture_release(nframes)
+            return chunk
+        else:
+            return numpy.zeros([0])
+
+    def record(self, numframes=None):
+        """Record a block of audio data.
+
+        The data will be returned as a frames × channels float32 numpy array.
+        This function will wait until numframes frames have been recorded.
+        If numframes is given, it will return exactly `numframes` frames,
+        and buffer the rest for later.
+
+        If numframes is None, it will return whatever the audio backend
+        has available right now.
+        Use this if latency must be kept to a minimum, but be aware that
+        block sizes can change at the whims of the audio backend.
+
+        If using `record` with `numframes=None` after using `record` with a
+        required `numframes`, the last buffered frame will be returned along
+        with the new recorded block.
+        (If you want to empty the last buffered frame instead, use `flush`)
+
+        """
+
+        if numframes is None:
+            recorded_data = [self._pending_chunk, self._record_chunk()]
+            self._pending_chunk = numpy.zeros([0])
+        else:
+            recorded_frames = len(self._pending_chunk)
+            recorded_data = [self._pending_chunk]
+            self._pending_chunk = numpy.zeros([0])
+            required_frames = numframes*len(set(self.channelmap))
+            while recorded_frames < required_frames:
+                chunk = self._record_chunk()
+                recorded_data.append(chunk)
+                recorded_frames += len(chunk)
+            if recorded_frames > required_frames:
+                to_split = -(recorded_frames-required_frames)
+                recorded_data[-1], self._pending_chunk = numpy.split(recorded_data[-1], [to_split])
+
+        data = numpy.reshape(numpy.concatenate(recorded_data), [-1, len(set(self.channelmap))])
         return data[:, self.channelmap]
+
+    def flush(self):
+        """Return the last pending chunk
+        After using the record method, this will return the last incomplete
+        chunk and delete it.
+
+        """
+        last_chunk = numpy.reshape(self._pending_chunk, [-1, len(set(self.channelmap))])
+        self._pending_chunk = numpy.zeros([0])
+        return last_chunk
