@@ -1,6 +1,6 @@
 import os
 import cffi
-import numpy as np
+import numpy
 import collections
 import time
 import re
@@ -304,7 +304,7 @@ class _Player:
             if self._queue:
                 src = self._queue.popleft()
             else:
-                src = np.zeros(numframes, "float32")
+                src = numpy.zeros(numframes, "float32")
             srcbuffer = _ffi.from_buffer(src)
 
             for bufferidx in range(bufferlist.mNumberBuffers):
@@ -341,7 +341,7 @@ class _Player:
 
         """
 
-        data = np.asarray(data, dtype="float32", order='C')
+        data = numpy.asarray(data, dtype="float32", order='C')
         data[data>1] = 1
         data[data<-1] = -1
         if data.ndim == 1:
@@ -708,11 +708,11 @@ class _Resampler:
             if status != 0 and status != -1:
                 raise RuntimeError('error during sample rate conversion:', status)
 
-            array = np.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
+            array = numpy.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
 
             self.queue.append(array[:self.outsize[0]*self.channels])
 
-        converted_data = np.concatenate(self.queue)
+        converted_data = numpy.concatenate(self.queue)
         self.queue.clear()
 
         return converted_data
@@ -741,7 +741,7 @@ class _Recorder:
 
     def __enter__(self):
         self._queue = collections.deque()
-        self._pending_chunk = np.zeros([0])
+        self._pending_chunk = numpy.zeros([0])
 
         channels = self._au.channels
         au = self._au.ptr[0]
@@ -766,7 +766,7 @@ class _Recorder:
             if status != 0:
                 print('error during recording:', status)
 
-            data = np.frombuffer(_ffi.buffer(data), dtype='float32')
+            data = numpy.frombuffer(_ffi.buffer(data), dtype='float32')
             self._queue.append(data)
             self._record_event.set()
             return status
@@ -813,10 +813,10 @@ class _Recorder:
 
         if numframes is None:
             blocks = [self._pending_chunk, self._record_chunk()]
-            self._pending_chunk = np.zeros([0])
+            self._pending_chunk = numpy.zeros([0])
         else:
             blocks = [self._pending_chunk]
-            self._pending_chunk = np.zeros([0])
+            self._pending_chunk = numpy.zeros([0])
             recorded_frames = len(blocks[0])
             required_frames = int((numframes*self._au.channels)/self._au.resample)
             while recorded_frames < required_frames:
@@ -825,9 +825,9 @@ class _Recorder:
                 recorded_frames += len(block)
             if recorded_frames > required_frames:
                 to_split = -(recorded_frames-required_frames)
-                blocks[-1], self._pending_chunk = np.split(blocks[-1], [to_split])
+                blocks[-1], self._pending_chunk = numpy.split(blocks[-1], [to_split])
 
-        data = np.concatenate(blocks)
+        data = numpy.concatenate(blocks)
 
         if self._au.channels != 1:
             data = data.reshape([-1, self._au.channels])
@@ -846,6 +846,6 @@ class _Recorder:
         chunk and delete it.
 
         """
-        last_chunk = np.reshape(self._pending_chunk, [-1, self._au.channels])
-        self._pending_chunk = np.zeros([0])
+        last_chunk = numpy.reshape(self._pending_chunk, [-1, self._au.channels])
+        self._pending_chunk = numpy.zeros([0])
         return last_chunk
