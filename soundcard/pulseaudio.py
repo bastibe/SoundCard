@@ -12,6 +12,7 @@ import collections
 import time
 import re
 import numpy as np
+import threading
 
 
 def all_speakers():
@@ -335,9 +336,15 @@ class _Recorder(_Stream):
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
         self._pending_chunk = np.zeros((0, ))
+        self._record_event = threading.Event()
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+        @_ffi.callback("pa_stream_request_cb_t")
+        def read_callback(stream, nbytes, userdata):
+            self._record_event.set()
+        self._callback = read_callback
+        self._pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
     def _record_chunk(self):
         '''Record one chunk of audio data, as returned by pulseaudio
@@ -348,21 +355,21 @@ class _Recorder(_Stream):
         '''
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while True:
+        readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
+        while not readable_bytes:
+            self._record_event.wait()
+            self._record_event.clear()
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
-            if readable_bytes > 0:
-                data_ptr[0] = _ffi.NULL
-                nbytes_ptr[0] = 0
-                self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
-                if data_ptr[0] != _ffi.NULL:
-                    chunk = np.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
-                if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-                    chunk = np.zeros(nbytes_ptr[0]//4, dtype='float32')
-                if nbytes_ptr[0] > 0:
-                    self._pulse._pa_stream_drop(self.stream)
-                    return chunk
-            else:
-                time.sleep(0.001)
+        data_ptr[0] = _ffi.NULL
+        nbytes_ptr[0] = 0
+        self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
+        if data_ptr[0] != _ffi.NULL:
+            chunk = np.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+        if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
+            chunk = np.zeros(nbytes_ptr[0]//4, dtype='float32')
+        if nbytes_ptr[0] > 0:
+            self._pulse._pa_stream_drop(self.stream)
+            return chunk
 
     def record(self, numframes=None):
         """Record a block of audio data.
@@ -605,3 +612,4 @@ class _PulseAudio:
     _pa_stream_get_buffer_attr = _lock(_pa.pa_stream_get_buffer_attr)
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
+    _pa_stream_set_read_callback = _pa.pa_stream_set_read_callback
