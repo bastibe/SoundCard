@@ -576,7 +576,7 @@ class _Player(_AudioClient):
             data = data[:, None] # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
-        if data.shape[1] == 1 and self.channels != 1:
+        if data.shape[1] == 1 and len(set(self.channelmap)) != 1:
             data = numpy.tile(data, [1, len(set(self.channelmap))])
 
         # internally, channel numbers are always ascending:
