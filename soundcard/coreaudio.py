@@ -155,7 +155,9 @@ class _Speaker(_Soundcard):
         return _Player(self._id, samplerate, channels, blocksize)
 
     def play(self, data, samplerate, channels=None, blocksize=None):
-        if channels is None:
+        if channels is None and len(data.shape) == 2:
+            channels = data.shape[1]
+        elif channels is None:
             channels = self.channels
         with self.player(samplerate, channels, blocksize) as p:
             p.play(data)
@@ -694,7 +696,7 @@ class _Resampler:
         return 0
 
     def resample(self, data):
-        self.todo = data
+        self.todo = numpy.array(data, dtype='float32')
         while len(self.todo) > 0:
             self.outsize[0] = self.blocksize
 
@@ -818,7 +820,7 @@ class _Recorder:
             blocks = [self._pending_chunk]
             self._pending_chunk = numpy.zeros([0])
             recorded_frames = len(blocks[0])
-            required_frames = int((numframes*self._au.channels)/self._au.resample)
+            required_frames = int(numframes/self._au.resample)*self._au.channels
             while recorded_frames < required_frames:
                 block = self._record_chunk()
                 blocks.append(block)
@@ -837,6 +839,9 @@ class _Recorder:
 
         if self._au.channels != 1:
             data = data.reshape([-1, self._au.channels])
+
+        data[data!=data] = 0   # DEBUG: filter out broken values
+        data[abs(data)>10] = 0 #        (very high values and nans)
 
         return data
 
