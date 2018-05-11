@@ -95,8 +95,7 @@ def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
     assert recording.shape[1] == 2
     left, right = recording.T
     assert left.mean() > 0
-    if sys.platform != 'darwin': # macOS plays mono on all channels
-        assert abs(right.mean()) < 0.01 # something like zero
+    assert abs(right.mean()) < 0.01 # something like zero
     assert (left > 0.5).sum() == len(signal)
 
 def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone):
