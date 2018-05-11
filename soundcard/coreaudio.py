@@ -303,16 +303,25 @@ class _Player:
         @_ffi.callback("AURenderCallback")
         def render_callback(userdata, actionflags, timestamp,
                             busnumber, numframes, bufferlist):
-            if self._queue:
-                src = self._queue.popleft()
-            else:
-                src = numpy.zeros(numframes, "float32")
-            srcbuffer = _ffi.from_buffer(src)
-
             for bufferidx in range(bufferlist.mNumberBuffers):
                 dest = bufferlist.mBuffers[bufferidx]
-                destbuffer = _ffi.buffer(dest.mData, dest.mDataByteSize)
-                _ffi.memmove(destbuffer, srcbuffer, len(srcbuffer))
+                channels = dest.mNumberChannels
+                bytes_written = 0
+                to_write = dest.mDataByteSize
+                while bytes_written < to_write:
+                    if self._queue:
+                        data = self._queue.popleft()
+                        srcbuffer = _ffi.from_buffer(data)
+                        numbytes = min(len(srcbuffer), to_write-bytes_written)
+                        _ffi.memmove(dest.mData+bytes_written, srcbuffer, numbytes)
+                        if numbytes < len(srcbuffer):
+                            leftover = data[numbytes//4//channels:]
+                            self._queue.appendleft(leftover)
+                        bytes_written += numbytes
+                    else:
+                        src = bytearray(to_write-bytes_written)
+                        _ffi.memmove(dest.mData+bytes_written, src, len(src))
+                        bytes_written += len(src)
             return 0
 
         self._au.set_callback(render_callback)
