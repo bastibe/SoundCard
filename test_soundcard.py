@@ -107,10 +107,14 @@ def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone)
     assert recording.mean() > 0
     assert (recording > 0.5).sum() == len(signal)
 
-# TODO: test more complex channel maps
-# out = soundcard.default_microphone().record(44100, 44100, [0, 1, 0])
-
-if __name__ == '__main__':
-    with loopback_microphone().recorder(48000, channels=2, blocksize=512) as loopback_recorder:
-        with loopback_speaker().player(48000, channels=2, blocksize=512) as loopback_player:
-            test_loopback_playback(loopback_player, loopback_recorder)
+def test_loopback_multichannel_channelmap(loopback_speaker, loopback_microphone):
+    with loopback_speaker.player(48000, channels=[2, 0], blocksize=512) as loopback_player:
+        with loopback_microphone.recorder(48000, channels=[2, 0], blocksize=512) as loopback_recorder:
+            loopback_player.play(signal)
+            recording = loopback_recorder.record(1024*12)
+    assert len(recording.shape) == 2
+    left, right = recording.T
+    assert left.mean() > 0
+    assert right.mean() < 0
+    assert (left > 0.5).sum() == len(signal)
+    assert (right < -0.5).sum() == len(signal)

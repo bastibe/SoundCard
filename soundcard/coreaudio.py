@@ -448,35 +448,54 @@ class _AudioUnit:
                                     maxblocksize))
 
         if isinstance(channels, collections.Iterable):
-            self.channels = len(channels)
-            self.channelmap = channels
+            if iotype == 'output':
+                # invert channel map and fill with -1 ([2, 0] -> [1, -1, 0]):
+                self.channels = len([c for c in channels if c >= 0])
+                channelmap = [-1]*(max(channels)+1)
+                for idx, c in enumerate(channels):
+                    channelmap[c] = idx
+                self.channelmap = channelmap
+            else:
+                self.channels = len(channels)
+                self.channelmap = channels
         elif isinstance(channels, int):
             self.channels = channels
         else:
             raise TypeError('channels must be iterable or integer')
 
-    def _set_property(self, property, scope, element, data, num_elements=1):
+    def _set_property(self, property, scope, element, data):
+        if '[]' in _ffi.typeof(data).cname:
+            num_values = len(data)
+        else:
+            num_values = 1
         status = _au.AudioUnitSetProperty(self.ptr[0],
                                           property, scope, element,
-                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
+                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname)*num_values)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
 
-    def _get_property(self, property, scope, element, type, num_elements=1):
-        data = _ffi.new(type)
-        datasize = _ffi.new("UInt32*", _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
+    def _get_property(self, property, scope, element, type):
+        datasize = _ffi.new("UInt32*")
+        status = _au.AudioUnitGetPropertyInfo(self.ptr[0],
+                                              property, scope, element,
+                                              datasize, _ffi.NULL)
+        num_values = datasize[0]//_ffi.sizeof(type)
+        data = _ffi.new(type + '[{}]'.format(num_values))
         status = _au.AudioUnitGetProperty(self.ptr[0],
                                           property, scope, element,
                                           data, datasize)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
-        return data
+        if num_values == 1:
+            return data[0]
+        else:
+            return data
 
     @property
     def device(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_CurrentDevice,
-            _cac.kAudioUnitScope_Global, 0, "UInt32*")[0]
+            _cac.kAudioUnitScope_Global, 0, "UInt32")
 
     @device.setter
     def device(self, dev):
@@ -489,7 +508,7 @@ class _AudioUnit:
     def enableinput(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_EnableIO,
-            _cac.kAudioUnitScope_Input, 1, "UInt32*")
+            _cac.kAudioUnitScope_Input, 1, "UInt32")
 
     @enableinput.setter
     def enableinput(self, yesno):
@@ -502,7 +521,7 @@ class _AudioUnit:
     def enableoutput(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_EnableIO,
-            _cac.kAudioUnitScope_Output, 0, "UInt32*")[0]
+            _cac.kAudioUnitScope_Output, 0, "UInt32")
 
     @enableoutput.setter
     def enableoutput(self, yesno):
@@ -515,7 +534,7 @@ class _AudioUnit:
     def samplerate(self):
         return self._get_property(
             _cac.kAudioUnitProperty_SampleRate,
-            self._au_scope, self._au_element, "Float64*")[0]
+            self._au_scope, self._au_element, "Float64")
 
     @samplerate.setter
     def samplerate(self, samplerate):
@@ -528,9 +547,9 @@ class _AudioUnit:
     def channels(self):
         streamformat = self._get_property(
             _cac.kAudioUnitProperty_StreamFormat,
-            self._au_scope, self._au_element, "AudioStreamBasicDescription*")
+            self._au_scope, self._au_element, "AudioStreamBasicDescription")
         assert streamformat
-        return streamformat[0].mChannelsPerFrame
+        return streamformat.mChannelsPerFrame
 
     @channels.setter
     def channels(self, channels):
@@ -552,28 +571,28 @@ class _AudioUnit:
     def maxblocksize(self):
         maxblocksize = self._get_property(
             _cac.kAudioUnitProperty_MaximumFramesPerSlice,
-            _cac.kAudioUnitScope_Global, 0, "UInt32*")
+            _cac.kAudioUnitScope_Global, 0, "UInt32")
         assert maxblocksize
-        return maxblocksize[0]
+        return maxblocksize
 
     @property
     def channelmap(self):
         scope = {2: 1, 1: 2}[self._au_scope]
         map = self._get_property(
             _cac.kAudioOutputUnitProperty_ChannelMap,
-            scope, 0,
-            "SInt32[{}]".format(self.channels),
-            num_elements=2)
-        return list(map)
+            scope, self._au_element,
+            "SInt32")
+        last_meaningful = max(idx for idx, c in enumerate(map) if c != -1)
+        return list(map[0:last_meaningful+1])
 
     @channelmap.setter
     def channelmap(self, map):
         scope = {2: 1, 1: 2}[self._au_scope]
-        map = _ffi.new("SInt32[]", map)
+        cmap = _ffi.new("SInt32[]", map)
         self._set_property(
             _cac.kAudioOutputUnitProperty_ChannelMap,
             scope, self._au_element,
-            map, num_elements=2)
+            cmap)
 
     @property
     def blocksizerange(self):
