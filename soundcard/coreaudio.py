@@ -849,9 +849,6 @@ class _Recorder:
         if self._au.channels != 1:
             data = data.reshape([-1, self._au.channels])
 
-        data[data!=data] = 0   # DEBUG: filter out broken values
-        data[abs(data)>10] = 0 #        (very high values and nans)
-
         return data
 
     def flush(self):

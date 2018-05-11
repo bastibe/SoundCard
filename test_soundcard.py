@@ -3,11 +3,8 @@ import soundcard
 import numpy
 import pytest
 
-silence = numpy.zeros([1024, 2])
 ones = numpy.ones(1024)
-
 signal = numpy.concatenate([[ones], [-ones]]).T
-priming_silence = numpy.zeros([48000//5, 2])
 
 def test_speakers():
     for speaker in soundcard.all_speakers():
@@ -60,10 +57,7 @@ def loopback_recorder(loopback_microphone):
         yield recorder
 
 def test_loopback_playback(loopback_player, loopback_recorder):
-    loopback_player.play(priming_silence)
-    loopback_recorder.record(len(priming_silence))
     loopback_player.play(signal)
-    loopback_player.play(silence)
     recording = loopback_recorder.record(1024*10)
     assert recording.shape[1] == 2
     left, right = recording.T
@@ -74,10 +68,7 @@ def test_loopback_playback(loopback_player, loopback_recorder):
 
 def test_loopback_reverse_recorder_channelmap(loopback_player, loopback_microphone):
     with loopback_microphone.recorder(48000, channels=[1, 0], blocksize=512) as loopback_recorder:
-        loopback_player.play(priming_silence)
-        loopback_recorder.record(len(priming_silence))
         loopback_player.play(signal)
-        loopback_player.play(silence)
         recording = loopback_recorder.record(1024*12)
     assert recording.shape[1] == 2
     left, right = recording.T
@@ -88,10 +79,7 @@ def test_loopback_reverse_recorder_channelmap(loopback_player, loopback_micropho
 
 def test_loopback_reverse_player_channelmap(loopback_speaker, loopback_recorder):
     with loopback_speaker.player(48000, channels=[1, 0], blocksize=512) as loopback_player:
-        loopback_player.play(priming_silence)
-        loopback_recorder.record(len(priming_silence))
         loopback_player.play(signal)
-        loopback_player.play(silence)
         recording = loopback_recorder.record(1024*12)
     assert recording.shape[1] == 2
     left, right = recording.T
@@ -102,10 +90,7 @@ def test_loopback_reverse_player_channelmap(loopback_speaker, loopback_recorder)
 
 def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
     with loopback_speaker.player(48000, channels=[0], blocksize=512) as loopback_player:
-        loopback_player.play(priming_silence[:,0])
-        loopback_recorder.record(len(priming_silence))
         loopback_player.play(signal[:,0])
-        loopback_player.play(silence[:,0])
         recording = loopback_recorder.record(1024*12)
     assert recording.shape[1] == 2
     left, right = recording.T
@@ -116,10 +101,7 @@ def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
 
 def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone):
     with loopback_microphone.recorder(48000, channels=[0], blocksize=512) as loopback_recorder:
-        loopback_player.play(priming_silence)
-        loopback_recorder.record(len(priming_silence))
         loopback_player.play(signal)
-        loopback_player.play(silence)
         recording = loopback_recorder.record(1024*12)
     assert len(recording.shape) == 1 or recording.shape[1] == 1
     assert recording.mean() > 0
