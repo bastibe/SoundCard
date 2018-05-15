@@ -36,6 +36,11 @@ def loopback_speaker():
     elif sys.platform == 'darwin':
         # must install soundflower
         return soundcard.get_speaker('Soundflower64')
+    elif sys.platform == 'linux':
+        # pacmd load-module module-null-sink channels=6 rate=48000
+        return soundcard.get_speaker('Null')
+    else:
+        raise RuntimeError(f'Unknown platform {sys.platform}')
 
 @pytest.fixture
 def loopback_player(loopback_speaker):
@@ -50,6 +55,10 @@ def loopback_microphone():
     elif sys.platform == 'darwin':
         # must install soundflower
         return soundcard.get_microphone('Soundflower64')
+    elif sys.platform == 'linux':
+        return soundcard.get_microphone('Null', exclude_monitors=False)
+    else:
+        raise RuntimeError(f'Unknown platform {sys.platform}')
 
 @pytest.fixture
 def loopback_recorder(loopback_microphone):
@@ -95,7 +104,11 @@ def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
     assert recording.shape[1] == 2
     left, right = recording.T
     assert left.mean() > 0
-    assert abs(right.mean()) < 0.01 # something like zero
+    if sys.platform == 'linux':
+        # unmapped channels on linux are filled with the mean of other channels
+        assert right.mean() < left.mean()
+    else:
+        assert abs(right.mean()) < 0.01 # something like zero
     assert (left > 0.5).sum() == len(signal)
 
 def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone):

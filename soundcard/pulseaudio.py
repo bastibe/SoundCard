@@ -63,7 +63,7 @@ def default_microphone():
         return get_microphone(name)
 
 
-def get_microphone(id):
+def get_microphone(id, exclude_monitors=True):
     """Get a specific microphone by a variety of means.
 
     id can be a pulseaudio id, a substring of the microphone name, or
@@ -72,20 +72,24 @@ def get_microphone(id):
     """
     with _PulseAudio() as p:
         microphones = p.source_list
-    return _Microphone(id=_match_soundcard(id, microphones)['id'])
+    return _Microphone(id=_match_soundcard(id, microphones, exclude_monitors)['id'])
 
 
-def _match_soundcard(id, soundcards):
+def _match_soundcard(id, soundcards, exclude_monitors=True):
     """Find id in a list of soundcards.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
-    soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
-                        if not 'monitor' in soundcard['id']}
-    soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
-                          if not 'monitor' in soundcard['id']}
+    if exclude_monitors:
+        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
+                            if not 'monitor' in soundcard['id']}
+        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
+                              if not 'monitor' in soundcard['id']}
+    else:
+        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
+        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
     if id in soundcards_by_id:
         return soundcards_by_id[id]
     # try substring match:
@@ -237,10 +241,11 @@ class _Stream:
         self.stream = self._pulse._pa_stream_new(self._pulse.context, self._name.encode(), samplespec, channelmap)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
-        bufattr.fragsize = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # recording block size
+        numchannels = self.channels if isinstance(self.channels, int) else len(self.channels)
+        bufattr.fragsize = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # recording block sys.getsizeof()
         bufattr.minreq = 2**32-1 # start requesting more data at this bytes
         bufattr.prebuf = 2**32-1 # start playback after this bytes are available
-        bufattr.tlength = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
+        bufattr.tlength = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
         self._connect_stream(bufattr)
         while self._pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
