@@ -23,7 +23,7 @@ default_mic = sc.default_microphone()
 one_speaker = sc.get_speaker('Scarlett')
 one_mic = sc.get_microphone('Scarlett')
 # fuzzy-search:
-one_speker = sc.get_speaker('FS2i2')
+one_speaker = sc.get_speaker('FS2i2')
 one_mic = sc.get_microphone('FS2i2')
 ```
 
