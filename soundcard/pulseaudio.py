@@ -11,7 +11,8 @@ _pa = _ffi.dlopen('pulse')
 import collections
 import time
 import re
-import numpy as np
+import numpy
+import threading
 
 
 def all_speakers():
@@ -62,7 +63,7 @@ def default_microphone():
         return get_microphone(name)
 
 
-def get_microphone(id):
+def get_microphone(id, exclude_monitors=True):
     """Get a specific microphone by a variety of means.
 
     id can be a pulseaudio id, a substring of the microphone name, or
@@ -71,20 +72,24 @@ def get_microphone(id):
     """
     with _PulseAudio() as p:
         microphones = p.source_list
-    return _Microphone(id=_match_soundcard(id, microphones)['id'])
+    return _Microphone(id=_match_soundcard(id, microphones, exclude_monitors)['id'])
 
 
-def _match_soundcard(id, soundcards):
+def _match_soundcard(id, soundcards, exclude_monitors=True):
     """Find id in a list of soundcards.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
-    soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
-                        if not 'monitor' in soundcard['id']}
-    soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
-                          if not 'monitor' in soundcard['id']}
+    if exclude_monitors:
+        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
+                            if not 'monitor' in soundcard['id']}
+        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
+                              if not 'monitor' in soundcard['id']}
+    else:
+        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
+        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
     if id in soundcards_by_id:
         return soundcards_by_id[id]
     # try substring match:
@@ -236,10 +241,11 @@ class _Stream:
         self.stream = self._pulse._pa_stream_new(self._pulse.context, self._name.encode(), samplespec, channelmap)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
-        bufattr.fragsize = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # recording block size
+        numchannels = self.channels if isinstance(self.channels, int) else len(self.channels)
+        bufattr.fragsize = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # recording block sys.getsizeof()
         bufattr.minreq = 2**32-1 # start requesting more data at this bytes
         bufattr.prebuf = 2**32-1 # start playback after this bytes are available
-        bufattr.tlength = self._blocksize*self.channels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
+        bufattr.tlength = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
         self._connect_stream(bufattr)
         while self._pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
@@ -300,13 +306,13 @@ class _Player(_Stream):
 
         """
 
-        data = np.array(data, dtype='float32', order='C')
+        data = numpy.array(data, dtype='float32', order='C')
         if data.ndim == 1:
             data = data[:, None] # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
-            data = np.tile(data, [1, self.channels])
+            data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         bufattr = self._pulse._pa_stream_get_buffer_attr(self.stream)
@@ -334,10 +340,16 @@ class _Recorder(_Stream):
 
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
-        self._pending_chunk = np.zeros((0, ))
+        self._pending_chunk = numpy.zeros((0, ))
+        self._record_event = threading.Event()
 
     def _connect_stream(self, bufattr):
         self._pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+        @_ffi.callback("pa_stream_request_cb_t")
+        def read_callback(stream, nbytes, userdata):
+            self._record_event.set()
+        self._callback = read_callback
+        self._pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
     def _record_chunk(self):
         '''Record one chunk of audio data, as returned by pulseaudio
@@ -348,21 +360,21 @@ class _Recorder(_Stream):
         '''
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
-        while True:
+        readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
+        while not readable_bytes:
+            self._record_event.wait()
+            self._record_event.clear()
             readable_bytes = self._pulse._pa_stream_readable_size(self.stream)
-            if readable_bytes > 0:
-                data_ptr[0] = _ffi.NULL
-                nbytes_ptr[0] = 0
-                self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
-                if data_ptr[0] != _ffi.NULL:
-                    chunk = np.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
-                if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-                    chunk = np.zeros(nbytes_ptr[0]//4, dtype='float32')
-                if nbytes_ptr[0] > 0:
-                    self._pulse._pa_stream_drop(self.stream)
-                    return chunk
-            else:
-                time.sleep(0.001)
+        data_ptr[0] = _ffi.NULL
+        nbytes_ptr[0] = 0
+        self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
+        if data_ptr[0] != _ffi.NULL:
+            chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+        if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
+            chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+        if nbytes_ptr[0] > 0:
+            self._pulse._pa_stream_drop(self.stream)
+            return chunk
 
     def record(self, numframes=None):
         """Record a block of audio data.
@@ -383,23 +395,23 @@ class _Recorder(_Stream):
         (If you want to empty the last buffered frame instead, use `flush`)
         """
         if numframes is None:
-            return np.reshape(np.concatenate([self.flush(), self._record_chunk()],
-                              [-1, self.channels]))
+            return numpy.reshape(numpy.concatenate([self.flush(), self._record_chunk()],
+                                                   [-1, self.channels]))
         else:
             captured_data = [self._pending_chunk]
             captured_frames = self._pending_chunk.shape[0] / self.channels
             if captured_frames >= numframes:
-                keep, self._pending_chunk = np.split(self._pending_chunk,
-                                                     [int(numframes * self.channels)])
-                return np.reshape(keep, [-1, self.channels])
+                keep, self._pending_chunk = numpy.split(self._pending_chunk,
+                                                        [int(numframes * self.channels)])
+                return numpy.reshape(keep, [-1, self.channels])
             else:
                 while captured_frames < numframes:
                     chunk = self._record_chunk()
                     captured_data.append(chunk)
                     captured_frames += len(chunk)/self.channels
                 to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
-                captured_data[-1], self._pending_chunk = np.split(captured_data[-1], [to_split])
-                return np.reshape(np.concatenate(captured_data), [-1, self.channels])
+                captured_data[-1], self._pending_chunk = numpy.split(captured_data[-1], [to_split])
+                return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
     def flush(self):
         """Return the last pending chunk
@@ -407,8 +419,8 @@ class _Recorder(_Stream):
         chunk and delete it.
 
         """
-        last_chunk = np.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = np.zeros((0, ))
+        last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
+        self._pending_chunk = numpy.zeros((0, ))
         return last_chunk
 
 
@@ -605,3 +617,4 @@ class _PulseAudio:
     _pa_stream_get_buffer_attr = _lock(_pa.pa_stream_get_buffer_attr)
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
+    _pa_stream_set_read_callback = _pa.pa_stream_set_read_callback

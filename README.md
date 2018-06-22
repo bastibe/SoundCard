@@ -23,7 +23,7 @@ default_mic = sc.default_microphone()
 one_speaker = sc.get_speaker('Scarlett')
 one_mic = sc.get_microphone('Scarlett')
 # fuzzy-search:
-one_speker = sc.get_speaker('FS2i2')
+one_speaker = sc.get_speaker('FS2i2')
 one_mic = sc.get_microphone('FS2i2')
 ```
 
@@ -50,7 +50,7 @@ with default_mic.recorder(samplerate=44100) as mic, default_speaker.player(sampl
 
 ## Channel Maps
 
-Some professional sound cards have large numbers of channels. If you want to record or play only a subset of those channels, you can specify a channel map. For playback, a channel map of `[0, 3, 4]` will play three-channel audio data on the physical channels one, four, and five. For recording, a channel map of `[0, 3, 4]` will return three-channel audio data recorded from the physical channels one, four, and five. 
+Some professional sound cards have large numbers of channels. If you want to record or play only a subset of those channels, you can specify a channel map. For playback, a channel map of `[0, 3, 4]` will play three-channel audio data on the physical channels one, four, and five. For recording, a channel map of `[0, 3, 4]` will return three-channel audio data recorded from the physical channels one, four, and five.
 
 Currently, channel maps do not work on Windows (beyond reordering). The API does not seem to support it. If you know how to implement channel maps on Windows, I'd be grateful for a hint!
 
@@ -58,10 +58,17 @@ In addition, pulseaudio/Linux defines channel `-1` as the mono mix of all channe
 
 ## Known Issues:
 
-* macOS/coreaudio currently does not play/record the first block correctly. The reason for this is still unknown.
 * Windows/WASAPI does not support channel maps beyond reordering.
 * Error messages often report some internal CFFI/backend errors. This will be improved in the future.
 * Documentation is not great yet. This will be improved in the future.
+* Windows/WASAPI silently ignores the blocksize. The reason for this is still unknown.
+
+## Changelog
+
+- 2018-04-25 implements fixed block sizes when recording
+  (thank you, Pariente Manuel!)
+- 2018-05-10 adds a test suite and various fixes for Windows
+- 2018-05-11 various fixes for macOS
 
 ## License
 

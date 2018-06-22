@@ -1,10 +1,11 @@
 import os
 import cffi
-import numpy as np
+import numpy
 import collections
 import time
 import re
 import math
+import threading
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -154,7 +155,9 @@ class _Speaker(_Soundcard):
         return _Player(self._id, samplerate, channels, blocksize)
 
     def play(self, data, samplerate, channels=None, blocksize=None):
-        if channels is None:
+        if channels is None and len(data.shape) == 2:
+            channels = data.shape[1]
+        elif channels is None:
             channels = self.channels
         with self.player(samplerate, channels, blocksize) as p:
             p.play(data)
@@ -300,16 +303,25 @@ class _Player:
         @_ffi.callback("AURenderCallback")
         def render_callback(userdata, actionflags, timestamp,
                             busnumber, numframes, bufferlist):
-            if self._queue:
-                src = self._queue.popleft()
-            else:
-                src = np.zeros(numframes, "float32")
-            srcbuffer = _ffi.from_buffer(src)
-
             for bufferidx in range(bufferlist.mNumberBuffers):
                 dest = bufferlist.mBuffers[bufferidx]
-                destbuffer = _ffi.buffer(dest.mData, dest.mDataByteSize)
-                _ffi.memmove(destbuffer, srcbuffer, len(srcbuffer))
+                channels = dest.mNumberChannels
+                bytes_written = 0
+                to_write = dest.mDataByteSize
+                while bytes_written < to_write:
+                    if self._queue:
+                        data = self._queue.popleft()
+                        srcbuffer = _ffi.from_buffer(data)
+                        numbytes = min(len(srcbuffer), to_write-bytes_written)
+                        _ffi.memmove(dest.mData+bytes_written, srcbuffer, numbytes)
+                        if numbytes < len(srcbuffer):
+                            leftover = data[numbytes//4//channels:]
+                            self._queue.appendleft(leftover)
+                        bytes_written += numbytes
+                    else:
+                        src = bytearray(to_write-bytes_written)
+                        _ffi.memmove(dest.mData+bytes_written, src, len(src))
+                        bytes_written += len(src)
             return 0
 
         self._au.set_callback(render_callback)
@@ -340,7 +352,7 @@ class _Player:
 
         """
 
-        data = np.asarray(data, dtype="float32", order='C')
+        data = numpy.asarray(data, dtype="float32", order='C')
         data[data>1] = 1
         data[data<-1] = -1
         if data.ndim == 1:
@@ -425,43 +437,65 @@ class _AudioUnit:
             self.resample = 1
             self.samplerate = samplerate
 
-        if self.blocksizerange[0] <= blocksize <= self.blocksizerange[1]:
+        # there are two maximum block sizes for some reason:
+        maxblocksize = min(self.blocksizerange[1],
+                           self.maxblocksize)
+        if self.blocksizerange[0] <= blocksize <= maxblocksize:
             self.blocksize = blocksize
         else:
             raise TypeError("blocksize must be between {} and {}"
                             .format(self.blocksizerange[0],
-                                    self.blocksizerange[1]))
+                                    maxblocksize))
 
         if isinstance(channels, collections.Iterable):
-            self.channels = len(channels)
-            self.channelmap = channels
+            if iotype == 'output':
+                # invert channel map and fill with -1 ([2, 0] -> [1, -1, 0]):
+                self.channels = len([c for c in channels if c >= 0])
+                channelmap = [-1]*(max(channels)+1)
+                for idx, c in enumerate(channels):
+                    channelmap[c] = idx
+                self.channelmap = channelmap
+            else:
+                self.channels = len(channels)
+                self.channelmap = channels
         elif isinstance(channels, int):
             self.channels = channels
         else:
             raise TypeError('channels must be iterable or integer')
 
-    def _set_property(self, property, scope, element, data, num_elements=1):
+    def _set_property(self, property, scope, element, data):
+        if '[]' in _ffi.typeof(data).cname:
+            num_values = len(data)
+        else:
+            num_values = 1
         status = _au.AudioUnitSetProperty(self.ptr[0],
                                           property, scope, element,
-                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
+                                          data, _ffi.sizeof(_ffi.typeof(data).item.cname)*num_values)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
 
-    def _get_property(self, property, scope, element, type, num_elements=1):
-        data = _ffi.new(type)
-        datasize = _ffi.new("UInt32*", _ffi.sizeof(_ffi.typeof(data).item.cname)*num_elements)
+    def _get_property(self, property, scope, element, type):
+        datasize = _ffi.new("UInt32*")
+        status = _au.AudioUnitGetPropertyInfo(self.ptr[0],
+                                              property, scope, element,
+                                              datasize, _ffi.NULL)
+        num_values = datasize[0]//_ffi.sizeof(type)
+        data = _ffi.new(type + '[{}]'.format(num_values))
         status = _au.AudioUnitGetProperty(self.ptr[0],
                                           property, scope, element,
                                           data, datasize)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
-        return data
+        if num_values == 1:
+            return data[0]
+        else:
+            return data
 
     @property
     def device(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_CurrentDevice,
-            _cac.kAudioUnitScope_Global, 0, "UInt32*")[0]
+            _cac.kAudioUnitScope_Global, 0, "UInt32")
 
     @device.setter
     def device(self, dev):
@@ -474,7 +508,7 @@ class _AudioUnit:
     def enableinput(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_EnableIO,
-            _cac.kAudioUnitScope_Input, 1, "UInt32*")
+            _cac.kAudioUnitScope_Input, 1, "UInt32")
 
     @enableinput.setter
     def enableinput(self, yesno):
@@ -487,7 +521,7 @@ class _AudioUnit:
     def enableoutput(self):
         return self._get_property(
             _cac.kAudioOutputUnitProperty_EnableIO,
-            _cac.kAudioUnitScope_Output, 0, "UInt32*")[0]
+            _cac.kAudioUnitScope_Output, 0, "UInt32")
 
     @enableoutput.setter
     def enableoutput(self, yesno):
@@ -500,7 +534,7 @@ class _AudioUnit:
     def samplerate(self):
         return self._get_property(
             _cac.kAudioUnitProperty_SampleRate,
-            self._au_scope, self._au_element, "Float64*")[0]
+            self._au_scope, self._au_element, "Float64")
 
     @samplerate.setter
     def samplerate(self, samplerate):
@@ -513,9 +547,9 @@ class _AudioUnit:
     def channels(self):
         streamformat = self._get_property(
             _cac.kAudioUnitProperty_StreamFormat,
-            self._au_scope, self._au_element, "AudioStreamBasicDescription*")
+            self._au_scope, self._au_element, "AudioStreamBasicDescription")
         assert streamformat
-        return streamformat[0].mChannelsPerFrame
+        return streamformat.mChannelsPerFrame
 
     @channels.setter
     def channels(self, channels):
@@ -534,23 +568,31 @@ class _AudioUnit:
             self._au_scope, self._au_element, streamformat)
 
     @property
+    def maxblocksize(self):
+        maxblocksize = self._get_property(
+            _cac.kAudioUnitProperty_MaximumFramesPerSlice,
+            _cac.kAudioUnitScope_Global, 0, "UInt32")
+        assert maxblocksize
+        return maxblocksize
+
+    @property
     def channelmap(self):
         scope = {2: 1, 1: 2}[self._au_scope]
         map = self._get_property(
             _cac.kAudioOutputUnitProperty_ChannelMap,
-            scope, 0,
-            "SInt32[{}]".format(self.channels),
-            num_elements=2)
-        return list(map)
+            scope, self._au_element,
+            "SInt32")
+        last_meaningful = max(idx for idx, c in enumerate(map) if c != -1)
+        return list(map[0:last_meaningful+1])
 
     @channelmap.setter
     def channelmap(self, map):
         scope = {2: 1, 1: 2}[self._au_scope]
-        map = _ffi.new("SInt32[]", map)
+        cmap = _ffi.new("SInt32[]", map)
         self._set_property(
             _cac.kAudioOutputUnitProperty_ChannelMap,
             scope, self._au_element,
-            map, num_elements=2)
+            cmap)
 
     @property
     def blocksizerange(self):
@@ -682,7 +724,7 @@ class _Resampler:
         return 0
 
     def resample(self, data):
-        self.todo = data
+        self.todo = numpy.array(data, dtype='float32')
         while len(self.todo) > 0:
             self.outsize[0] = self.blocksize
 
@@ -696,11 +738,11 @@ class _Resampler:
             if status != 0 and status != -1:
                 raise RuntimeError('error during sample rate conversion:', status)
 
-            array = np.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
+            array = numpy.frombuffer(_ffi.buffer(self.outdata), dtype='float32').copy()
 
             self.queue.append(array[:self.outsize[0]*self.channels])
 
-        converted_data = np.concatenate(self.queue)
+        converted_data = numpy.concatenate(self.queue)
         self.queue.clear()
 
         return converted_data
@@ -725,9 +767,11 @@ class _Recorder:
     def __init__(self, id, samplerate, channels, blocksize=None):
         self._au = _AudioUnit("input", id, samplerate, channels, blocksize)
         self._resampler = _Resampler(self._au.samplerate, samplerate, self._au.channels)
+        self._record_event = threading.Event()
 
     def __enter__(self):
         self._queue = collections.deque()
+        self._pending_chunk = numpy.zeros([0])
 
         channels = self._au.channels
         au = self._au.ptr[0]
@@ -752,7 +796,9 @@ class _Recorder:
             if status != 0:
                 print('error during recording:', status)
 
+            data = numpy.frombuffer(_ffi.buffer(data), dtype='float32')
             self._queue.append(data)
+            self._record_event.set()
             return status
 
         self._au.set_callback(input_callback)
@@ -763,26 +809,55 @@ class _Recorder:
     def __exit__(self, exc_type, exc_value, traceback):
         self._au.close()
 
-    def record(self, numframes):
-        """Record some audio data.
+    def _record_chunk(self):
+        """Record one chunk of audio data, as returned by core audio
 
-        The data will be returned as a `frames × channels` float32
-        numpy array.
+        The data will be returned as a 1D numpy array, which will be used by
+        the `record` method. This function is the interface of the `_Recorder`
+        object with core audio.
+        """
+        while not self._queue:
+            self._record_event.wait()
+            self._record_event.clear()
+        return self._queue.popleft()
 
-        This function will wait until `numframes` frames have been
-        recorded. However, the audio backend holds the final authority
-        over how much audio data can be read at a time, so the
-        returned amount of data will often be slightly larger than
-        what was requested. The amount of buffering can be controlled
-        through the blocksize of the recorder object.
+    def record(self, numframes=None):
+        """Record a block of audio data.
+
+        The data will be returned as a frames × channels float32 numpy array.
+        This function will wait until numframes frames have been recorded.
+        If numframes is given, it will return exactly `numframes` frames,
+        and buffer the rest for later.
+
+        If numframes is None, it will return whatever the audio backend
+        has available right now.
+        Use this if latency must be kept to a minimum, but be aware that
+        block sizes can change at the whims of the audio backend.
+
+        If using `record` with `numframes=None` after using `record` with a
+        required `numframes`, the last buffered frame will be returned along
+        with the new recorded block.
+        (If you want to empty the last buffered frame instead, use `flush`)
 
         """
 
-        while sum(len(q) for q in self._queue) < (numframes*self._au.channels)/self._au.resample:
-            time.sleep(0.001)
+        if numframes is None:
+            blocks = [self._pending_chunk, self._record_chunk()]
+            self._pending_chunk = numpy.zeros([0])
+        else:
+            blocks = [self._pending_chunk]
+            self._pending_chunk = numpy.zeros([0])
+            recorded_frames = len(blocks[0])
+            required_frames = int(numframes/self._au.resample)*self._au.channels
+            while recorded_frames < required_frames:
+                block = self._record_chunk()
+                blocks.append(block)
+                recorded_frames += len(block)
+            if recorded_frames > required_frames:
+                to_split = -(recorded_frames-required_frames)
+                blocks[-1], self._pending_chunk = numpy.split(blocks[-1], [to_split])
 
-        data = np.concatenate([np.frombuffer(_ffi.buffer(d), dtype='float32') for d in self._queue])
-        self._queue.clear()
+        data = numpy.concatenate(blocks)
 
         if self._au.channels != 1:
             data = data.reshape([-1, self._au.channels])
@@ -794,3 +869,13 @@ class _Recorder:
             data = data.reshape([-1, self._au.channels])
 
         return data
+
+    def flush(self):
+        """Return the last pending chunk
+        After using the record method, this will return the last incomplete
+        chunk and delete it.
+
+        """
+        last_chunk = numpy.reshape(self._pending_chunk, [-1, self._au.channels])
+        self._pending_chunk = numpy.zeros([0])
+        return last_chunk

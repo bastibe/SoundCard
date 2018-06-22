@@ -396,3 +396,6 @@ typedef enum pa_stream_state {
     PA_STREAM_TERMINATED
 } pa_stream_state_t;
 pa_stream_state_t pa_stream_get_state(pa_stream *p);
+
+typedef void(*pa_stream_request_cb_t)(pa_stream *p, size_t nbytes, void *userdata);
+void pa_stream_set_read_callback(pa_stream *p, pa_stream_request_cb_t cb, void *userdata);
