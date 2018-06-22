@@ -268,6 +268,13 @@ class _Stream:
             # make sure that this definitely gets called no matter what:
             self._pulse.__exit__(exc_type, exc_value, traceback)
 
+    def get_latency(self):
+        """ Get latency of the stream in sound card clock domain"""
+        usec_t = _ffi.new("pa_usec_t*")
+        self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
+        self._pulse._pa_stream_get_latency(self.stream, usec_t, _ffi.NULL)
+        return usec_t[0]
+
 
 class _Player(_Stream):
     """A context manager for an active output stream.
@@ -614,6 +621,8 @@ class _PulseAudio:
     _pa_stream_peek = _lock(_pa.pa_stream_peek)
     _pa_stream_drop = _lock(_pa.pa_stream_drop)
     _pa_stream_connect_playback = _lock(_pa.pa_stream_connect_playback)
+    _pa_stream_update_timing_info = _lock(_pa.pa_stream_update_timing_info)
+    _pa_stream_get_latency = _lock(_pa.pa_stream_get_latency)
     _pa_stream_get_buffer_attr = _lock(_pa.pa_stream_get_buffer_attr)
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
