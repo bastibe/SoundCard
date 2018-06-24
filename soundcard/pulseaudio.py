@@ -213,6 +213,7 @@ class _Stream:
         self._name = name
         self._blocksize = blocksize
         self.channels = channels
+        self.latency = _ffi.new("pa_usec_t*")
 
     def __enter__(self):
         self._pulse = _PulseAudio()
@@ -270,10 +271,9 @@ class _Stream:
 
     def get_latency(self):
         """ Get latency of the stream in sound card clock domain"""
-        usec_t = _ffi.new("pa_usec_t*")
         self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
-        self._pulse._pa_stream_get_latency(self.stream, usec_t, _ffi.NULL)
-        return usec_t[0]
+        self._pulse._pa_stream_get_latency(self.stream, self.latency, _ffi.NULL)
+        return self.latency[0]
 
 
 class _Player(_Stream):
@@ -621,7 +621,7 @@ class _PulseAudio:
     _pa_stream_peek = _lock(_pa.pa_stream_peek)
     _pa_stream_drop = _lock(_pa.pa_stream_drop)
     _pa_stream_connect_playback = _lock(_pa.pa_stream_connect_playback)
-    _pa_stream_update_timing_info = _lock(_pa.pa_stream_update_timing_info)
+    _pa_stream_update_timing_info = _lock_and_block(_pa.pa_stream_update_timing_info)
     _pa_stream_get_latency = _lock(_pa.pa_stream_get_latency)
     _pa_stream_get_buffer_attr = _lock(_pa.pa_stream_get_buffer_attr)
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
