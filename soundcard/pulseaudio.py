@@ -213,7 +213,7 @@ class _Stream:
         self._name = name
         self._blocksize = blocksize
         self.channels = channels
-        self.latency = _ffi.new("pa_usec_t*")
+        self._latency = _ffi.new("pa_usec_t*")
 
     def __enter__(self):
         self._pulse = _PulseAudio()
@@ -269,11 +269,12 @@ class _Stream:
             # make sure that this definitely gets called no matter what:
             self._pulse.__exit__(exc_type, exc_value, traceback)
 
-    def get_latency(self):
-        """ Get latency of the stream in sound card clock domain"""
+    @property
+    def latency(self):
+        """ Latency of the stream in sound card clock domain"""
         self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
-        self._pulse._pa_stream_get_latency(self.stream, self.latency, _ffi.NULL)
-        return self.latency[0]
+        self._pulse._pa_stream_get_latency(self.stream, self._latency, _ffi.NULL)
+        return self._latency[0]
 
 
 class _Player(_Stream):
