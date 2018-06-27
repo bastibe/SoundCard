@@ -385,6 +385,7 @@ typedef enum pa_seek_mode {
 int pa_stream_write(pa_stream *p, const void *data, size_t nbytes, pa_free_cb_t free_cb, int64_t offset, pa_seek_mode_t seek);
 int pa_stream_peek(pa_stream *p, const void **data, size_t *nbytes);
 int pa_stream_drop(pa_stream *p);
+int pa_stream_get_latency(pa_stream *s, pa_usec_t *r_usec, int *negative);
 const pa_channel_map* pa_stream_get_channel_map(pa_stream *s);
 const pa_buffer_attr* pa_stream_get_buffer_attr(pa_stream *s);
 
@@ -399,3 +400,5 @@ pa_stream_state_t pa_stream_get_state(pa_stream *p);
 
 typedef void(*pa_stream_request_cb_t)(pa_stream *p, size_t nbytes, void *userdata);
 void pa_stream_set_read_callback(pa_stream *p, pa_stream_request_cb_t cb, void *userdata);
+
+pa_operation* pa_stream_update_timing_info(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
