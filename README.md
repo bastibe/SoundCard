@@ -58,7 +58,7 @@ In addition, pulseaudio/Linux defines channel `-1` as the mono mix of all channe
 
 ## Known Issues:
 
-* Windows/WASAPI does not support channel maps beyond reordering.
+* Windows/WASAPI currently records garbage if you record only a single channel. Multi-channel and channel maps work, though. 
 * Error messages often report some internal CFFI/backend errors. This will be improved in the future.
 * Documentation is not great yet. This will be improved in the future.
 * Windows/WASAPI silently ignores the blocksize. The reason for this is still unknown.
