@@ -93,6 +93,16 @@ def get_speaker(id):
     """
     return _match_device(id, all_speakers())
 
+def all_loopback_devices():
+    """A list of all connected microphones."""
+    with _DeviceEnumerator() as enum:
+        return [_Microphone(dev, isloopback=True) for dev in enum.all_devices('speaker')]
+
+def default_loopback_device():
+    """The default microphone of the system."""
+    with _DeviceEnumerator() as enum:
+        return _Microphone(enum.default_device('speaker'), isloopback=True)
+
 def all_microphones():
     """A list of all connected microphones."""
     with _DeviceEnumerator() as enum:
@@ -382,7 +392,7 @@ class _Speaker(_Device):
     def player(self, samplerate, channels=None, blocksize=None):
         if channels is None:
             channels = self.channels
-        return _Player(self._audio_client(), samplerate, channels, blocksize)
+        return _Player(self._audio_client(), samplerate, channels, blocksize, False)
 
     def play(self, data, samplerate, channels=None, blocksize=None):
         with self.player(samplerate, channels, blocksize) as p:
@@ -403,8 +413,9 @@ class _Microphone(_Device):
 
     """
 
-    def __init__(self, device):
+    def __init__(self, device, isloopback=False):
         self._id = device._id
+        self.isloopback = isloopback
 
     def __repr__(self):
         return f'<Microphone {self.name} ({self.channels} channels)>'
@@ -412,7 +423,7 @@ class _Microphone(_Device):
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
             channels = self.channels
-        return _Recorder(self._audio_client(), samplerate, channels, blocksize)
+        return _Recorder(self._audio_client(), samplerate, channels, blocksize, self.isloopback)
 
     def record(self, numframes, samplerate, channels=None, blocksize=None):
         with self.recorder(samplerate, channels, blocksize) as r:
@@ -428,7 +439,7 @@ class _AudioClient:
 
     """
 
-    def __init__(self, ptr, samplerate, channels, blocksize):
+    def __init__(self, ptr, samplerate, channels, blocksize, isloopback):
         self._ptr = ptr
 
         if isinstance(channels, int):
@@ -478,6 +489,8 @@ class _AudioClient:
         sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
         #             resample   | remix      | better-SRC | nopersist
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
+        if isloopback:
+            streamflags |= 0x00020000 #loopback
         bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
         _com.check_error(hr)
