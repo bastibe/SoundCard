@@ -93,34 +93,33 @@ def get_speaker(id):
     """
     return _match_device(id, all_speakers())
 
-def all_loopback_devices():
-    """A list of all connected microphones."""
-    with _DeviceEnumerator() as enum:
-        return [_Microphone(dev, isloopback=True) for dev in enum.all_devices('speaker')]
+def all_microphones(include_loopback=False):
+    """A list of all connected microphones.
 
-def default_loopback_device():
-    """The default microphone of the system."""
-    with _DeviceEnumerator() as enum:
-        return _Microphone(enum.default_device('speaker'), isloopback=True)
+    By default, this does not include loopback (virtual microphones
+    that record the output of a speaker).
 
-def all_microphones():
-    """A list of all connected microphones."""
+    """
+    
     with _DeviceEnumerator() as enum:
-        return [_Microphone(dev) for dev in enum.all_devices('microphone')]
+        if include_loopback:
+            return [_Microphone(dev, isloopback=True) for dev in enum.all_devices('speaker')] + [_Microphone(dev) for dev in enum.all_devices('microphone')]
+        else:
+            return [_Microphone(dev) for dev in enum.all_devices('microphone')]
 
 def default_microphone():
     """The default microphone of the system."""
     with _DeviceEnumerator() as enum:
         return _Microphone(enum.default_device('microphone'))
 
-def get_microphone(id):
+def get_microphone(id, include_loopback=False):
     """Get a specific microphone by a variety of means.
 
     id can be a WASAPI id, a substring of the microphone name, or a
     fuzzy-matched pattern for the microphone name.
 
     """
-    return _match_device(id, all_microphones())
+    return _match_device(id, all_microphones(include_loopback))
 
 def _match_device(id, devices):
     """Find id in a list of devices.

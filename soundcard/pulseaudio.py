@@ -40,7 +40,7 @@ def get_speaker(id):
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
 
 
-def all_microphones(exclude_monitors=True):
+def all_microphones(include_loopback=False):
     """A list of all connected microphones.
 
     By default, this does not include monitors (virtual microphones
@@ -63,7 +63,7 @@ def default_microphone():
         return get_microphone(name)
 
 
-def get_microphone(id, exclude_monitors=True):
+def get_microphone(id, include_loopback=False):
     """Get a specific microphone by a variety of means.
 
     id can be a pulseaudio id, a substring of the microphone name, or
@@ -72,17 +72,17 @@ def get_microphone(id, exclude_monitors=True):
     """
     with _PulseAudio() as p:
         microphones = p.source_list
-    return _Microphone(id=_match_soundcard(id, microphones, exclude_monitors)['id'])
+    return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
 
 
-def _match_soundcard(id, soundcards, exclude_monitors=True):
+def _match_soundcard(id, soundcards, include_loopback=False):
     """Find id in a list of soundcards.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
-    if exclude_monitors:
+    if not include_loopback:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
                             if not 'monitor' in soundcard['id']}
         soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards

@@ -28,8 +28,13 @@ def all_speakers():
             if _Speaker(id=d).channels > 0]
 
 
-def all_microphones():
+def all_microphones(include_loopback=False):
     """A list of all connected microphones."""
+    
+    """macOS does not support loopback recording functionality"""
+    if include_loopback:
+        raise NotImplementedError("macOS does not support loopback recording functionality")
+    
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDevices,
@@ -66,14 +71,14 @@ def default_microphone():
     return _Microphone(id=device_id)
 
 
-def get_microphone(id):
+def get_microphone(id, include_loopback=False):
     """Get a specific microphone by a variety of means.
 
     id can be a CoreAudio id, a substring of the microphone name, or a
     fuzzy-matched pattern for the microphone name.
 
     """
-    return _match_device(id, all_microphones())
+    return _match_device(id, all_microphones(include_loopback))
 
 
 def _match_device(id, devices):
