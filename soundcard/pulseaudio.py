@@ -13,6 +13,7 @@ import time
 import re
 import numpy
 import threading
+import warnings
 
 
 def all_speakers():
@@ -40,13 +41,17 @@ def get_speaker(id):
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
 
 
-def all_microphones(include_loopback=False):
+def all_microphones(include_loopback=False, exclude_monitors=True):
     """A list of all connected microphones.
 
     By default, this does not include monitors (virtual microphones
     that record the output of a speaker).
 
     """
+
+    if not exclude_monitors:
+        warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
+        include_loopback = not exclude_monitors
 
     with _PulseAudio() as p:
         mics = [_Microphone(id=m['id']) for m in p.source_list]
@@ -63,13 +68,18 @@ def default_microphone():
         return get_microphone(name)
 
 
-def get_microphone(id, include_loopback=False):
+def get_microphone(id, include_loopback=False, exclude_monitors=True):
     """Get a specific microphone by a variety of means.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
+
+    if not exclude_monitors:
+        warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
+        include_loopback = not exclude_monitors
+    
     with _PulseAudio() as p:
         microphones = p.source_list
     return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])

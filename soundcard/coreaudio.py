@@ -31,7 +31,7 @@ def all_speakers():
 def all_microphones(include_loopback=False):
     """A list of all connected microphones."""
     
-    """macOS does not support loopback recording functionality"""
+    # macOS does not support loopback recording functionality
     if include_loopback:
         raise NotImplementedError("macOS does not support loopback recording functionality")
     

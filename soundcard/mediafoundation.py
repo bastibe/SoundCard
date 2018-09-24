@@ -417,7 +417,10 @@ class _Microphone(_Device):
         self.isloopback = isloopback
 
     def __repr__(self):
-        return f'<Microphone {self.name} ({self.channels} channels)>'
+        if self.isloopback:
+            return f'<Loopback {self.name} ({self.channels} channels)>'
+        else:
+            return f'<Microphone {self.name} ({self.channels} channels)>'
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
