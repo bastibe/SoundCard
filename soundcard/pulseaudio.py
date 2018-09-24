@@ -55,7 +55,7 @@ def all_microphones(include_loopback=False, exclude_monitors=True):
 
     with _PulseAudio() as p:
         mics = [_Microphone(id=m['id']) for m in p.source_list]
-        if exclude_monitors:
+        if not include_loopback:
             return [m for m in mics if m._get_info()['device.class'] != 'monitor']
         else:
             return mics
@@ -187,11 +187,18 @@ class _Microphone(_SoundCard):
     """
 
     def __repr__(self):
-        return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
+        if self.isloopback:
+            return '<Loopback {} ({} channels)>'.format(self.name, self.channels)
+        else:
+            return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
     @property
     def name(self):
         return self._get_info()['name']
+
+    @property
+    def isloopback(self):
+        return self._get_info()['device.class'] == 'monitor'
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:

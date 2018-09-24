@@ -184,6 +184,10 @@ class _Microphone(_Soundcard):
     """
 
     @property
+    def isloopback(self):
+        return False
+
+    @property
     def channels(self):
         bufferlist = _CoreAudio.get_property(
             self._id,
