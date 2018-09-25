@@ -6,6 +6,7 @@ import time
 import re
 import math
 import threading
+import warnings
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -33,7 +34,7 @@ def all_microphones(include_loopback=False):
     
     # macOS does not support loopback recording functionality
     if include_loopback:
-        raise NotImplementedError("macOS does not support loopback recording functionality")
+        warnings.warn("macOS does not support loopback recording functionality", Warning)
     
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
