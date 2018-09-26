@@ -13,6 +13,7 @@ import time
 import re
 import numpy
 import threading
+import warnings
 
 
 def all_speakers():
@@ -40,7 +41,7 @@ def get_speaker(id):
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
 
 
-def all_microphones(exclude_monitors=True):
+def all_microphones(include_loopback=False, exclude_monitors=True):
     """A list of all connected microphones.
 
     By default, this does not include monitors (virtual microphones
@@ -48,9 +49,13 @@ def all_microphones(exclude_monitors=True):
 
     """
 
+    if not exclude_monitors:
+        warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
+        include_loopback = not exclude_monitors
+
     with _PulseAudio() as p:
         mics = [_Microphone(id=m['id']) for m in p.source_list]
-        if exclude_monitors:
+        if not include_loopback:
             return [m for m in mics if m._get_info()['device.class'] != 'monitor']
         else:
             return mics
@@ -63,26 +68,31 @@ def default_microphone():
         return get_microphone(name)
 
 
-def get_microphone(id, exclude_monitors=True):
+def get_microphone(id, include_loopback=False, exclude_monitors=True):
     """Get a specific microphone by a variety of means.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
+
+    if not exclude_monitors:
+        warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
+        include_loopback = not exclude_monitors
+    
     with _PulseAudio() as p:
         microphones = p.source_list
-    return _Microphone(id=_match_soundcard(id, microphones, exclude_monitors)['id'])
+    return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
 
 
-def _match_soundcard(id, soundcards, exclude_monitors=True):
+def _match_soundcard(id, soundcards, include_loopback=False):
     """Find id in a list of soundcards.
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
 
     """
-    if exclude_monitors:
+    if not include_loopback:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
                             if not 'monitor' in soundcard['id']}
         soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
@@ -177,11 +187,18 @@ class _Microphone(_SoundCard):
     """
 
     def __repr__(self):
-        return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
+        if self.isloopback:
+            return '<Loopback {} ({} channels)>'.format(self.name, self.channels)
+        else:
+            return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
     @property
     def name(self):
         return self._get_info()['name']
+
+    @property
+    def isloopback(self):
+        return self._get_info()['device.class'] == 'monitor'
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
