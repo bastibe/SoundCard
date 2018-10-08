@@ -15,10 +15,7 @@ with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
 _combase = _ffi.dlopen('combase')
 _ole32 = _ffi.dlopen('ole32')
 
-
-
 class _COMLibrary:
-    comLoadedByThisClass = False;
     """General functionality of the COM library.
 
     This class contains functionality related to the COM library, for:
@@ -30,24 +27,30 @@ class _COMLibrary:
 
     def __init__(self):
         COINIT_MULTITHREADED = 0x0
+        hr = _combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
+
         try:
-            hr = _combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
             self.check_error(hr)
-            self.comLoadedByThisClass = True
+
+            """Flag to keep track if this class directly initialized COM, required for un-initializing in destructor """
+            self.com_loaded = True
+
         except RuntimeError as e:
-            #Error 0x80010106
-            if hr == -2147417850:
+            # Error 0x80010106
+            RPC_E_CHANGED_MODE = 0x80010106
+            if hr + 2 ** 32 == RPC_E_CHANGED_MODE:
                 """
-                COM was already initialized before, therefore trying to initialize it again fails
+                COM was already initialized before (e.g. by the debugger), therefore trying to initialize it again fails
                 we can safely ignore this error, but we have to make sure that we don't try to unload it afterwards
                 therefore we set this flag to False
                 """
-                self.comLoadedByThisClass = False
+                self.com_loaded = False
             else:
-                raise e;
+                raise e
 
     def __del__(self):
-        if self.comLoadedByThisClass is True:
+        """Don't un-initialize COM if COM was not initialized directly by this class"""
+        if self.com_loaded:
             _combase.CoUninitialize()
 
     @staticmethod
