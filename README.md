@@ -69,6 +69,13 @@ In addition, pulseaudio/Linux defines channel `-1` as the mono mix of all channe
   (thank you, Pariente Manuel!)
 - 2018-05-10 adds a test suite and various fixes for Windows
 - 2018-05-11 various fixes for macOS
+- 2018-09-22 adds loopback support on Windows
+  (thank you, Jan Leskovec!)
+- 2018-09-23 renames `exclude_monitors` to `include_loopback`
+  (thank you, Jan Leskovec!)
+- 2018-10-07 adds workaround if COM was already initialized on Windows
+  (thank you, Sebastian Michel!)
+- 2018-10-16 fixes blockless recording on Linux
 
 ## License
 
