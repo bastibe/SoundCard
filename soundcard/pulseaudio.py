@@ -79,7 +79,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     if not exclude_monitors:
         warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
         include_loopback = not exclude_monitors
-    
+
     with _PulseAudio() as p:
         microphones = p.source_list
     return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
@@ -394,7 +394,8 @@ class _Recorder(_Stream):
         nbytes_ptr[0] = 0
         self._pulse._pa_stream_peek(self.stream, data_ptr, nbytes_ptr)
         if data_ptr[0] != _ffi.NULL:
-            chunk = numpy.fromstring(_ffi.buffer(data_ptr[0], nbytes_ptr[0]), dtype='float32')
+            buffer = _ffi.buffer(data_ptr[0], nbytes_ptr[0])
+            chunk = numpy.frombuffer(buffer, dtype='float32').copy()
         if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
             chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
         if nbytes_ptr[0] > 0:
