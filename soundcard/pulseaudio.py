@@ -420,8 +420,8 @@ class _Recorder(_Stream):
         (If you want to empty the last buffered frame instead, use `flush`)
         """
         if numframes is None:
-            return numpy.reshape(numpy.concatenate([self.flush(), self._record_chunk()],
-                                                   [-1, self.channels]))
+            return numpy.reshape(numpy.concatenate([self.flush().ravel(), self._record_chunk()]),
+                                 [-1, self.channels])
         else:
             captured_data = [self._pending_chunk]
             captured_frames = self._pending_chunk.shape[0] / self.channels
