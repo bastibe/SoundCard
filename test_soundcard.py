@@ -27,6 +27,9 @@ def test_default_record():
     recording = soundcard.default_microphone().record(1024, 44100)
     assert len(recording == 1024)
 
+def test_default_blockless_record():
+    recording = soundcard.default_microphone().record(None, 44100)
+
 @pytest.fixture
 def loopback_speaker():
     import sys
