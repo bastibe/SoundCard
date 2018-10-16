@@ -56,7 +56,7 @@ def loopback_microphone():
         # must install soundflower
         return soundcard.get_microphone('Soundflower64')
     elif sys.platform == 'linux':
-        return soundcard.get_microphone('Null', exclude_monitors=False)
+        return soundcard.get_microphone('Null', include_loopback=True)
     else:
         raise RuntimeError(f'Unknown platform {sys.platform}')
 
