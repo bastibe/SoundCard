@@ -17,13 +17,25 @@ import warnings
 
 
 def all_speakers():
-    """A list of all connected speakers."""
+    """A list of all connected speakers.
+
+    Returns
+    -------
+    speakers : list(_Speaker)
+
+    """
     with _PulseAudio() as p:
         return [_Speaker(id=s['id']) for s in p.sink_list]
 
 
 def default_speaker():
-    """The default speaker of the system."""
+    """The default speaker of the system.
+
+    Returns
+    -------
+    speaker : _Speaker
+
+    """
     with _PulseAudio() as p:
         name = p.server_info['default sink id']
         return get_speaker(name)
@@ -32,8 +44,15 @@ def default_speaker():
 def get_speaker(id):
     """Get a specific speaker by a variety of means.
 
-    id can be an int index, a pulseaudio id, a substring of the
-    speaker name, or a fuzzy-matched pattern for the speaker name.
+    Parameters
+    ----------
+    id : int or str
+        can be an int index, a pulseaudio id, a substring of the
+        speaker name, or a fuzzy-matched pattern for the speaker name.
+
+    Returns
+    -------
+    speaker : _Speaker
 
     """
     with _PulseAudio() as p:
@@ -44,8 +63,19 @@ def get_speaker(id):
 def all_microphones(include_loopback=False, exclude_monitors=True):
     """A list of all connected microphones.
 
-    By default, this does not include monitors (virtual microphones
+    By default, this does not include loopbacks (virtual microphones
     that record the output of a speaker).
+
+    Parameters
+    ----------
+    include_loopback : bool
+        allow recording of speaker outputs
+    exclude_monitors : bool
+        deprecated version of ``include_loopback``
+
+    Returns
+    -------
+    microphones : list(_Microphone)
 
     """
 
@@ -62,7 +92,12 @@ def all_microphones(include_loopback=False, exclude_monitors=True):
 
 
 def default_microphone():
-    """The default microphone of the system."""
+    """The default microphone of the system.
+
+    Returns
+    -------
+    microphone : _Microphone
+    """
     with _PulseAudio() as p:
         name = p.server_info['default source id']
         return get_microphone(name)
@@ -71,9 +106,22 @@ def default_microphone():
 def get_microphone(id, include_loopback=False, exclude_monitors=True):
     """Get a specific microphone by a variety of means.
 
-    id can be a pulseaudio id, a substring of the microphone name, or
-    a fuzzy-matched pattern for the microphone name.
+    By default, this does not include loopbacks (virtual microphones
+    that record the output of a speaker).
 
+    Parameters
+    ----------
+    id : int or str
+        can be an int index, a pulseaudio id, a substring of the
+        speaker name, or a fuzzy-matched pattern for the speaker name.
+    include_loopback : bool
+        allow recording of speaker outputs
+    exclude_monitors : bool
+        deprecated version of ``include_loopback``
+
+    Returns
+    -------
+    microphone : _Microphone
     """
 
     if not exclude_monitors:
@@ -90,7 +138,6 @@ def _match_soundcard(id, soundcards, include_loopback=False):
 
     id can be a pulseaudio id, a substring of the microphone name, or
     a fuzzy-matched pattern for the microphone name.
-
     """
     if not include_loopback:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
@@ -120,11 +167,23 @@ class _SoundCard:
 
     @property
     def channels(self):
+        """int or list(int): Either the number of channels, or a list of
+        channel indices. Index -1 is the mono mixture of all channels,
+        and subsequent numbers are channel numbers (left, right,
+        center, ...)
+
+        """
         return self._get_info()['channels']
 
     @property
     def id(self):
+        """object: A backend-dependent unique ID."""
         return self._id
+
+    @property
+    def name(self):
+        """str: The human-readable name of the soundcard."""
+        return self._get_info()['name']
 
     def _get_info(self):
         with _PulseAudio() as p:
@@ -134,32 +193,59 @@ class _SoundCard:
 class _Speaker(_SoundCard):
     """A soundcard output. Can be used to play audio.
 
-    Use the `play` method to play one piece of audio, or use the
-    `player` method to get a context manager for playing continuous
+    Use the :func:`play` method to play one piece of audio, or use the
+    :func:`player` method to get a context manager for playing continuous
     audio.
 
-    Properties:
-    - `channels`: either the number of channels to record, or a list
-      of channel indices. Index -1 is the mono mixture of all channels,
-      and subsequent numbers are channel numbers (left, right, center,
-      ...)
-    - `name`: the name of the soundcard
+    Multiple calls to :func:`play` play immediately and concurrently,
+    while the :func:`player` schedules multiple pieces of audio one
+    after another.
 
     """
 
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    @property
-    def name(self):
-        return self._get_info()['name']
-
     def player(self, samplerate, channels=None, blocksize=None):
+        """Create Player for playing audio.
+
+        Parameters
+        ----------
+        samplerate : int
+            The desired sampling rate in Hz
+        channels : {int, list(int)}, optional
+            Play on these channels. For example, ``[0, 3]`` will play
+            stereo data on the physical channels one and four.
+            Defaults to use all available channels.
+        blocksize : int
+            Will play this many samples at a time. Choose a lower
+            block size for lower latency and more CPU usage.
+
+        Returns
+        -------
+        player : _Player
+        """
         if channels is None:
             channels = self.channels
         return _Player(self._id, samplerate, channels, blocksize)
 
     def play(self, data, samplerate, channels=None, blocksize=None):
+        """Play some audio data.
+
+        Parameters
+        ----------
+        data : numpy array
+            The audio data to play. Must be a *frames x channels* Numpy array.
+        samplerate : int
+            The desired sampling rate in Hz
+        channels : {int, list(int)}, optional
+            Play on these channels. For example, ``[0, 3]`` will play
+            stereo data on the physical channels one and four.
+            Defaults to use all available channels.
+        blocksize : int
+            Will play this many samples at a time. Choose a lower
+            block size for lower latency and more CPU usage.
+        """
         if channels is None:
             channels = self.channels
         with _Player(self._id, samplerate, channels, blocksize) as s:
@@ -173,16 +259,13 @@ class _Speaker(_SoundCard):
 class _Microphone(_SoundCard):
     """A soundcard input. Can be used to record audio.
 
-    Use the `record` method to record a piece of audio, or use the
-    `recorder` method to get a context manager for recording
+    Use the :func:`record` method to record one piece of audio, or use
+    the :func:`recorder` method to get a context manager for recording
     continuous audio.
 
-    Properties:
-    - `channels`: either the number of channels to record, or a list
-      of channel indices. Index -1 is the mono mixture of all channels,
-      and subsequent numbers are channel numbers (left, right, center,
-      ...)
-    - `name`: the name of the soundcard
+    Multiple calls to :func:`record` record immediately and
+    concurrently, while the :func:`recorder` schedules multiple pieces
+    of audio to be recorded one after another.
 
     """
 
@@ -193,19 +276,55 @@ class _Microphone(_SoundCard):
             return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
     @property
-    def name(self):
-        return self._get_info()['name']
-
-    @property
     def isloopback(self):
+        """bool : Whether this microphone is recording a speaker."""
         return self._get_info()['device.class'] == 'monitor'
 
     def recorder(self, samplerate, channels=None, blocksize=None):
+        """Create Recorder for recording audio.
+
+        Parameters
+        ----------
+        samplerate : int
+            The desired sampling rate in Hz
+        channels : {int, list(int)}, optional
+            Record on these channels. For example, ``[0, 3]`` will record
+            stereo data from the physical channels one and four.
+            Defaults to use all available channels.
+        blocksize : int
+            Will record this many samples at a time. Choose a lower
+            block size for lower latency and more CPU usage.
+
+        Returns
+        -------
+        recorder : _Recorder
+        """
         if channels is None:
             channels = self.channels
         return _Recorder(self._id, samplerate, channels, blocksize)
 
     def record(self, numframes, samplerate, channels=None, blocksize=None):
+        """Record some audio data.
+
+        Parameters
+        ----------
+        numframes: int
+            The number of frames to record.
+        samplerate : int
+            The desired sampling rate in Hz
+        channels : {int, list(int)}, optional
+            Record on these channels. For example, ``[0, 3]`` will record
+            stereo data from the physical channels one and four.
+            Defaults to use all available channels.
+        blocksize : int
+            Will record this many samples at a time. Choose a lower
+            block size for lower latency and more CPU usage.
+
+        Returns
+        -------
+        data : numpy array
+            The recorded audio data. Will be a *frames x channels* Numpy array.
+        """
         if channels is None:
             channels = self.channels
         with _Recorder(self._id, samplerate, channels, blocksize) as r:
@@ -287,7 +406,7 @@ class _Stream:
 
     @property
     def latency(self):
-        """ Latency of the stream in seconds"""
+        """float : Latency of the stream in seconds"""
         self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
         microseconds = _ffi.new("pa_usec_t*")
         self._pulse._pa_stream_get_latency(self.stream, microseconds, _ffi.NULL)
@@ -298,9 +417,9 @@ class _Player(_Stream):
     """A context manager for an active output stream.
 
     Audio playback is available as soon as the context manager is
-    entered. Audio data can be played using the `play` method.
-    Successive calls to `play` will queue up the audio one piece after
-    another. If no audio is queued up, this will play silence.
+    entered. Audio data can be played using the :func:`play` method.
+    Successive calls to :func:`play` will queue up the audio one piece
+    after another. If no audio is queued up, this will play silence.
 
     This context manager can only be entered once, and can not be used
     after it is closed.
@@ -314,9 +433,9 @@ class _Player(_Stream):
     def play(self, data):
         """Play some audio data.
 
-        Internally, all data is handled as float32 and with the
+        Internally, all data is handled as ``float32`` and with the
         appropriate number of channels. For maximum performance,
-        provide data as a `frames × channels` float32 numpy array.
+        provide data as a *frames × channels* float32 numpy array.
 
         If single-channel or one-dimensional data is given, this data
         will be played on all available channels.
@@ -328,6 +447,11 @@ class _Player(_Stream):
 
         If data is provided faster than it is played, later pieces
         will be queued up and played one after another.
+
+        Parameters
+        ----------
+        data : numpy array
+            The audio data to play. Must be a *frames x channels* Numpy array.
 
         """
 
@@ -354,8 +478,8 @@ class _Recorder(_Stream):
     """A context manager for an active input stream.
 
     Audio recording is available as soon as the context manager is
-    entered. Recorded audio data can be read using the `record`
-    method. If no audio data is available, `record` will block until
+    entered. Recorded audio data can be read using the :func:`record`
+    method. If no audio data is available, :func:`record` will block until
     the requested amount of audio data has been recorded.
 
     This context manager can only be entered once, and can not be used
@@ -405,20 +529,33 @@ class _Recorder(_Stream):
     def record(self, numframes=None):
         """Record a block of audio data.
 
-        The data will be returned as a frames × channels float32 numpy array.
-        This function will wait until numframes frames have been recorded.
-        If numframes is given, it will return exactly `numframes` frames,
-        and buffer the rest for later.
+        The data will be returned as a *frames × channels* float32
+        numpy array. This function will wait until ``numframes``
+        frames have been recorded. If numframes is given, it will
+        return exactly ``numframes`` frames, and buffer the rest for
+        later.
 
-        If numframes is None, it will return whatever the audio backend
-        has available right now.
-        Use this if latency must be kept to a minimum, but be aware that
-        block sizes can change at the whims of the audio backend.
+        If ``numframes`` is None, it will return whatever the audio
+        backend has available right now. Use this if latency must be
+        kept to a minimum, but be aware that block sizes can change at
+        the whims of the audio backend.
 
-        If using `record` with `numframes=None` after using `record` with a
-        required `numframes`, the last buffered frame will be returned along
-        with the new recorded block.
-        (If you want to empty the last buffered frame instead, use `flush`)
+        If using :func:`record` with ``numframes=None`` after using
+        :func:`record` with a required ``numframes``, the last
+        buffered frame will be returned along with the new recorded
+        block. (If you want to empty the last buffered frame instead,
+        use :func:`flush`)
+
+        Parameters
+        ----------
+        numframes : int, optional
+            The number of frames to record.
+
+        Returns
+        -------
+        data : numpy array
+            The recorded audio data. Will be a *frames x channels* Numpy array.
+
         """
         if numframes is None:
             return numpy.reshape(numpy.concatenate([self.flush().ravel(), self._record_chunk()]),
@@ -440,9 +577,15 @@ class _Recorder(_Stream):
                 return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
 
     def flush(self):
-        """Return the last pending chunk
-        After using the record method, this will return the last incomplete
-        chunk and delete it.
+        """Return the last pending chunk.
+
+        After using the :func:`record` method, this will return the
+        last incomplete chunk and delete it.
+
+        Returns
+        -------
+        data : numpy array
+            The recorded audio data. Will be a *frames x channels* Numpy array.
 
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
