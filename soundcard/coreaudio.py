@@ -31,11 +31,11 @@ def all_speakers():
 
 def all_microphones(include_loopback=False):
     """A list of all connected microphones."""
-    
+
     # macOS does not support loopback recording functionality
     if include_loopback:
         warnings.warn("macOS does not support loopback recording functionality", Warning)
-    
+
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDevices,

@@ -47,7 +47,7 @@ def get_speaker(id):
     Parameters
     ----------
     id : int or str
-        can be an int index, a pulseaudio id, a substring of the
+        can be an int index, a backend id, a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
 
     Returns
@@ -112,7 +112,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     Parameters
     ----------
     id : int or str
-        can be an int index, a pulseaudio id, a substring of the
+        can be an int index, a backend id, a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
     include_loopback : bool
         allow recording of speaker outputs
@@ -217,6 +217,8 @@ class _Speaker(_SoundCard):
             Play on these channels. For example, ``[0, 3]`` will play
             stereo data on the physical channels one and four.
             Defaults to use all available channels.
+            On Linux, channel ``-1`` is the mono mix of all channels.
+            On macOS, channel ``-1`` is silence.
         blocksize : int
             Will play this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
@@ -242,6 +244,8 @@ class _Speaker(_SoundCard):
             Play on these channels. For example, ``[0, 3]`` will play
             stereo data on the physical channels one and four.
             Defaults to use all available channels.
+            On Linux, channel ``-1`` is the mono mix of all channels.
+            On macOS, channel ``-1`` is silence.
         blocksize : int
             Will play this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
@@ -291,6 +295,8 @@ class _Microphone(_SoundCard):
             Record on these channels. For example, ``[0, 3]`` will record
             stereo data from the physical channels one and four.
             Defaults to use all available channels.
+            On Linux, channel ``-1`` is the mono mix of all channels.
+            On macOS, channel ``-1`` is silence.
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
@@ -316,6 +322,8 @@ class _Microphone(_SoundCard):
             Record on these channels. For example, ``[0, 3]`` will record
             stereo data from the physical channels one and four.
             Defaults to use all available channels.
+            On Linux, channel ``-1`` is the mono mix of all channels.
+            On macOS, channel ``-1`` is silence.
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
@@ -406,7 +414,7 @@ class _Stream:
 
     @property
     def latency(self):
-        """float : Latency of the stream in seconds"""
+        """float : Latency of the stream in seconds (only available on Linux)"""
         self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
         microseconds = _ffi.new("pa_usec_t*")
         self._pulse._pa_stream_get_latency(self.stream, microseconds, _ffi.NULL)
