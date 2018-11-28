@@ -105,6 +105,13 @@ Changelog
   (thank you, Pariente Manuel!)
 - 2018-05-10 adds a test suite and various fixes for Windows
 - 2018-05-11 various fixes for macOS
+- 2018-06-27 Adds latency property to Linux/pulseaudio
+  (Thank you, Pariente Manuel!)
+- 2018-07-17 adds loopback support for Windows
+  (Thank you, Jan Leskovec!)
+- 2018-10-16 adds bug fix for IPython on Windows
+  (Thank you, Sebastian Michel!)
+- 2018-11-28 adds Sphinx/Readthedocs documentation
 
 License
 -------
