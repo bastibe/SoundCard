@@ -1,6 +1,10 @@
 SoundCard
 =========
 
+|version| |python| |status| |license| 
+
+|contributors| |downloads|
+
 SoundCard is a library for playing and recording audio without resorting to a
 CPython extension. Instead, it is implemented using the wonderful `CFFI
 <http://cffi.readthedocs.io/en/latest/>`__ and the native audio libraries of
@@ -25,6 +29,20 @@ right now*. Please be civil.
 | SoundCard is licensed under the terms of the BSD 3-clause license
 | (c) 2016 Bastian Bechtold
 
+
+|open-issues| |closed-issues| |open-prs| |closed-prs| 
+
+.. |status| image:: https://img.shields.io/pypi/status/soundcard.svg
+.. |contributors| image:: https://img.shields.io/github/contributors/bastibe/soundcard.svg
+.. |version| image:: https://img.shields.io/pypi/v/soundcard.svg 
+.. |python| image:: https://img.shields.io/pypi/pyversions/soundcard.svg
+.. |license| image:: https://img.shields.io/github/license/bastibe/soundcard.svg
+.. |downloads| image:: https://img.shields.io/pypi/dm/soundcard.svg
+.. |open-issues| image:: https://img.shields.io/github/issues/bastibe/soundcard.svg
+.. |closed-issues| image:: https://img.shields.io/github/issues-closed/bastibe/soundcard.svg
+.. |open-prs| image:: https://img.shields.io/github/issues-pr/bastibe/soundcard.svg
+.. |closed-prs| image:: https://img.shields.io/github/issues-pr-closed/bastibe/soundcard.svg
+.. |status| image:: https://img.shields.io/pypi/status/soundcard.svg
 
 Tutorial
 --------
