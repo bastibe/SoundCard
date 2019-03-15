@@ -224,7 +224,7 @@ class _DeviceEnumerator:
         elif kind == 'microphone':
             data_flow = 1 # capture
         else:
-            raise TypeError(f'Invalid kind: {kind}')
+            raise TypeError('Invalid kind: %s'.format(kind))
 
         DEVICE_STATE_ACTIVE = 0x1
         ppDevices = _ffi.new('IMMDeviceCollection **')
@@ -248,7 +248,7 @@ class _DeviceEnumerator:
         elif kind == 'microphone':
             data_flow = 1 # capture
         else:
-            raise TypeError(f'Invalid kind: {kind}')
+            raise TypeError('Invalid kind: %s'.format(kind))
 
         ppDevice = _ffi.new('IMMDevice **')
         eConsole = 0
@@ -408,7 +408,7 @@ class _Speaker(_Device):
         self._id = device._id
 
     def __repr__(self):
-        return f'<Speaker {self.name} ({self.channels} channels)>'
+        return '<Speaker %s (%d channels)>'.format(self.name,self.channels)
 
     def player(self, samplerate, channels=None, blocksize=None):
         if channels is None:
@@ -440,9 +440,9 @@ class _Microphone(_Device):
 
     def __repr__(self):
         if self.isloopback:
-            return f'<Loopback {self.name} ({self.channels} channels)>'
+            return '<Loopback %s (%d channels)>'.format(self.name,self.channels)
         else:
-            return f'<Microphone {self.name} ({self.channels} channels)>'
+            return '<Microphone %s (%d channels)>'.format(self.name,self.channels)
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
@@ -515,7 +515,7 @@ class _AudioClient:
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
         if isloopback:
             streamflags |= 0x00020000 #loopback
-        bufferduration = int(blocksize/samplerate * 1000_000_0) # in hecto-nanoseconds
+        bufferduration = int(blocksize/samplerate * 10000000) # in hecto-nanoseconds (1000_000_0)
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
         _com.check_error(hr)
         _combase.CoTaskMemFree(ppMixFormat[0])
@@ -533,7 +533,7 @@ class _AudioClient:
         pMinimumPeriod = _ffi.new("REFERENCE_TIME*")
         hr = self._ptr[0][0].lpVtbl.GetDevicePeriod(self._ptr[0], pDefaultPeriod, pMinimumPeriod)
         _com.check_error(hr)
-        return pDefaultPeriod[0]/1000_000_0, pMinimumPeriod[0]/1000_000_0
+        return pDefaultPeriod[0]/10000000, pMinimumPeriod[0]/10000000 # (1000_000_0)
 
     @property
     def currentpadding(self):
