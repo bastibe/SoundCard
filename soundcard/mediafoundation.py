@@ -224,7 +224,7 @@ class _DeviceEnumerator:
         elif kind == 'microphone':
             data_flow = 1 # capture
         else:
-            raise TypeError('Invalid kind: %s'.format(kind))
+            raise TypeError('Invalid kind: {}'.format(kind))
 
         DEVICE_STATE_ACTIVE = 0x1
         ppDevices = _ffi.new('IMMDeviceCollection **')
@@ -248,7 +248,7 @@ class _DeviceEnumerator:
         elif kind == 'microphone':
             data_flow = 1 # capture
         else:
-            raise TypeError('Invalid kind: %s'.format(kind))
+            raise TypeError('Invalid kind: {}'.format(kind))
 
         ppDevice = _ffi.new('IMMDevice **')
         eConsole = 0
@@ -408,7 +408,7 @@ class _Speaker(_Device):
         self._id = device._id
 
     def __repr__(self):
-        return '<Speaker %s (%d channels)>'.format(self.name,self.channels)
+        return '<Speaker {} ({} channels)>'.format(self.name,self.channels)
 
     def player(self, samplerate, channels=None, blocksize=None):
         if channels is None:
@@ -440,9 +440,9 @@ class _Microphone(_Device):
 
     def __repr__(self):
         if self.isloopback:
-            return '<Loopback %s (%d channels)>'.format(self.name,self.channels)
+            return '<Loopback {} ({} channels)>'.format(self.name,self.channels)
         else:
-            return '<Microphone %s (%d channels)>'.format(self.name,self.channels)
+            return '<Microphone {} ({} channels)>'.format(self.name,self.channels)
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
