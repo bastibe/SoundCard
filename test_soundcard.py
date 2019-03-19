@@ -43,7 +43,7 @@ def loopback_speaker():
         # pacmd load-module module-null-sink channels=6 rate=48000
         return soundcard.get_speaker('Null')
     else:
-        raise RuntimeError('Unknown platform %s'.format(sys.platform))
+        raise RuntimeError('Unknown platform {}'.format(sys.platform))
 
 @pytest.fixture
 def loopback_player(loopback_speaker):
@@ -61,7 +61,7 @@ def loopback_microphone():
     elif sys.platform == 'linux':
         return soundcard.get_microphone('Null', include_loopback=True)
     else:
-        raise RuntimeError('Unknown platform %s'.format(sys.platform))
+        raise RuntimeError('Unknown platform {}'.format(sys.platform))
 
 @pytest.fixture
 def loopback_recorder(loopback_microphone):
