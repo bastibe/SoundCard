@@ -418,7 +418,7 @@ class _Stream:
         self._pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
         microseconds = _ffi.new("pa_usec_t*")
         self._pulse._pa_stream_get_latency(self.stream, microseconds, _ffi.NULL)
-        return microseconds[0] / 1_000_000
+        return microseconds[0] / 1000000 # 1_000_000 (3.5 compat)
 
 
 class _Player(_Stream):
