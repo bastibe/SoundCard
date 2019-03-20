@@ -10,7 +10,7 @@ setup(
     packages=['soundcard'],
     package_data={'soundcard': ['*.py.h']},
     install_requires=['numpy', 'cffi'],
-    python_requires='>=3.6',
+    python_requires='>=3.5',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -18,6 +18,7 @@ setup(
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
         'Operating System :: OS Independent',
+        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Topic :: Multimedia :: Sound/Audio :: Capture/Recording',
