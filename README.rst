@@ -1,7 +1,7 @@
 SoundCard
 =========
 
-|version| |python| |status| |license| 
+|version| |python| |status| |license|
 
 |contributors| |downloads|
 
@@ -30,11 +30,11 @@ right now*. Please be civil.
 | (c) 2016 Bastian Bechtold
 
 
-|open-issues| |closed-issues| |open-prs| |closed-prs| 
+|open-issues| |closed-issues| |open-prs| |closed-prs|
 
 .. |status| image:: https://img.shields.io/pypi/status/soundcard.svg
 .. |contributors| image:: https://img.shields.io/github/contributors/bastibe/soundcard.svg
-.. |version| image:: https://img.shields.io/pypi/v/soundcard.svg 
+.. |version| image:: https://img.shields.io/pypi/v/soundcard.svg
 .. |python| image:: https://img.shields.io/pypi/pyversions/soundcard.svg
 .. |license| image:: https://img.shields.io/github/license/bastibe/soundcard.svg
 .. |downloads| image:: https://img.shields.io/pypi/dm/soundcard.svg
@@ -136,3 +136,5 @@ Changelog
 - 2018-10-16 adds bug fix for IPython on Windows
   (Thank you, Sebastian Michel!)
 - 2018-11-28 adds Sphinx/Readthedocs documentation
+- 2019-03-25 adds support for Python 3.5
+  (Thank you, Daniel R. Kumor!)

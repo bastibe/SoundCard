@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='SoundCard',
-    version='0.2.2',
+    version='0.3.0',
     description='Play and record audio without resorting to CPython extensions',
     author='Bastian Bechtold',
     url='https://github.com/bastibe/SoundCard',
