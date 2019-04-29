@@ -138,3 +138,4 @@ Changelog
 - 2018-11-28 adds Sphinx/Readthedocs documentation
 - 2019-03-25 adds support for Python 3.5
   (Thank you, Daniel R. Kumor!)
+- 2019-04-29 adds experimental support for exclusive mode on Windows

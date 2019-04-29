@@ -410,10 +410,10 @@ class _Speaker(_Device):
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name,self.channels)
 
-    def player(self, samplerate, channels=None, blocksize=None):
+    def player(self, samplerate, channels=None, blocksize=None, exclusive_mode=False):
         if channels is None:
             channels = self.channels
-        return _Player(self._audio_client(), samplerate, channels, blocksize, False)
+        return _Player(self._audio_client(), samplerate, channels, blocksize, False, exclusive_mode)
 
     def play(self, data, samplerate, channels=None, blocksize=None):
         with self.player(samplerate, channels, blocksize) as p:
@@ -444,10 +444,10 @@ class _Microphone(_Device):
         else:
             return '<Microphone {} ({} channels)>'.format(self.name,self.channels)
 
-    def recorder(self, samplerate, channels=None, blocksize=None):
+    def recorder(self, samplerate, channels=None, blocksize=None, exclusive_mode=False):
         if channels is None:
             channels = self.channels
-        return _Recorder(self._audio_client(), samplerate, channels, blocksize, self.isloopback)
+        return _Recorder(self._audio_client(), samplerate, channels, blocksize, self.isloopback, exclusive_mode)
 
     def record(self, numframes, samplerate, channels=None, blocksize=None):
         with self.recorder(samplerate, channels, blocksize) as r:
@@ -463,7 +463,7 @@ class _AudioClient:
 
     """
 
-    def __init__(self, ptr, samplerate, channels, blocksize, isloopback):
+    def __init__(self, ptr, samplerate, channels, blocksize, isloopback, exclusive_mode=False):
         self._ptr = ptr
 
         if isinstance(channels, int):
@@ -510,7 +510,10 @@ class _AudioClient:
         # does not work:
         # ppMixFormat[0][0].dwChannelMask=channelmask
 
-        sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
+        if exclusive_mode:
+            sharemode = _combase.AUDCLNT_SHAREMODE_EXCLUSIVE
+        else:
+            sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
         #             resample   | remix      | better-SRC | nopersist
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
         if isloopback:

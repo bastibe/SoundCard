@@ -222,6 +222,10 @@ class _Speaker(_SoundCard):
         blocksize : int
             Will play this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        exclusive_mode : bool, optional
+            Windows only: open sound card in exclusive mode, which
+            might be necessary for short block lengths or high
+            sample rates or optimal performance. Default is ``False``.
 
         Returns
         -------
@@ -300,6 +304,10 @@ class _Microphone(_SoundCard):
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        exclusive_mode : bool, optional
+            Windows only: open sound card in exclusive mode, which
+            might be necessary for short block lengths or high
+            sample rates or optimal performance. Default is ``False``.
 
         Returns
         -------
