@@ -97,6 +97,33 @@ are *frames × channels* Numpy arrays.
             data = mic.record(numframes=1024)
             sp.play(data)
 
+Latency
+-------
+
+By default, SoundCard records and plays at the operating system's default
+configuration. Particularly on laptops, this configuration might have extreme
+latencies, up to multiple seconds.
+
+In order to request lower latencies, pass a ``blocksize`` to ``player`` or
+``recorder``. This tells the operating system your desired latency, and it will
+try to honor your request as best it can. On Windows/WASAPI, setting
+``exclusive_mode=True`` might help, too (this is currently experimental).
+
+Another source of latency is in the ``record`` function, which buffers output up
+to the requested ``numframes``. In general, for optimal latency, you should use
+a ``numframes`` significantly lower than the ``blocksize`` above, maybe by a
+factor of two or four.
+
+To get the audio data as quickly as absolutely possible, you can use
+``numframes=None``, which will return whatever audio data is available right
+now, without any buffering. Note that this might receive different numbers of
+frames each time.
+
+With the above settings, block sizes of 256 samples or ten milliseconds are
+usually no problem. The total latency of playback and recording is dependent on
+how these buffers are handled by the operating system, though, and might be
+significantly higher.
+
 Channel Maps
 ------------
 
@@ -117,8 +144,8 @@ Known Issues:
 * Windows/WASAPI currently records garbage if you record only a single channel.
   The reason for this is yet unknown. Multi-channel and channel maps work,
   though.
-* Windows/WASAPI silently ignores the blocksize. Apparently, it only supports
-  variable block sizes in exclusive mode, which is not yet supported.
+* Windows/WASAPI silently ignores the blocksize in some cases. Apparently, it
+  only supports variable block sizes in exclusive mode.
 * Error messages often report some internal CFFI/backend errors. This will be
   improved in the future.
 
