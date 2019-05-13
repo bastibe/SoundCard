@@ -42,7 +42,6 @@ right now*. Please be civil.
 .. |closed-issues| image:: https://img.shields.io/github/issues-closed/bastibe/soundcard.svg
 .. |open-prs| image:: https://img.shields.io/github/issues-pr/bastibe/soundcard.svg
 .. |closed-prs| image:: https://img.shields.io/github/issues-pr-closed/bastibe/soundcard.svg
-.. |status| image:: https://img.shields.io/pypi/status/soundcard.svg
 
 Tutorial
 --------
@@ -166,3 +165,4 @@ Changelog
 - 2019-03-25 adds support for Python 3.5
   (Thank you, Daniel R. Kumor!)
 - 2019-04-29 adds experimental support for exclusive mode on Windows
+- 2019-05-13 fixes sample rate conversion on macOS
