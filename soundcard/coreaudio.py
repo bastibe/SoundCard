@@ -755,6 +755,8 @@ class _Resampler:
         converted_data = numpy.concatenate(self.queue)
         self.queue.clear()
 
+        if self.channels != 1:
+            converted_data = converted_data.reshape([-1, self.channels])
         return converted_data
 
     def __del__(self):
@@ -781,7 +783,7 @@ class _Recorder:
 
     def __enter__(self):
         self._queue = collections.deque()
-        self._pending_chunk = numpy.zeros([0])
+        self._pending_chunk = numpy.zeros([0, self._au.channels])
 
         channels = self._au.channels
         au = self._au.ptr[0]
@@ -829,7 +831,14 @@ class _Recorder:
         while not self._queue:
             self._record_event.wait()
             self._record_event.clear()
-        return self._queue.popleft()
+        block = self._queue.popleft()
+
+        # perform sample rate conversion:
+        if self._au.channels != 1:
+            block = block.reshape([-1, self._au.channels])
+        if self._au.resample != 1:
+            block = self._resampler.resample(block)
+        return block
 
     def record(self, numframes=None):
         """Record a block of audio data.
@@ -853,30 +862,19 @@ class _Recorder:
 
         if numframes is None:
             blocks = [self._pending_chunk, self._record_chunk()]
-            self._pending_chunk = numpy.zeros([0])
+            self._pending_chunk = numpy.zeros([0, self._au.channels])
         else:
             blocks = [self._pending_chunk]
-            self._pending_chunk = numpy.zeros([0])
+            self._pending_chunk = numpy.zeros([0, self._au.channels])
             recorded_frames = len(blocks[0])
-            required_frames = int(numframes/self._au.resample)*self._au.channels
-            while recorded_frames < required_frames:
+            while recorded_frames < numframes:
                 block = self._record_chunk()
                 blocks.append(block)
                 recorded_frames += len(block)
-            if recorded_frames > required_frames:
-                to_split = -(recorded_frames-required_frames)
+            if recorded_frames > numframes:
+                to_split = -(recorded_frames-numframes)
                 blocks[-1], self._pending_chunk = numpy.split(blocks[-1], [to_split])
-
-        data = numpy.concatenate(blocks)
-
-        if self._au.channels != 1:
-            data = data.reshape([-1, self._au.channels])
-
-        if self._au.resample != 1:
-            data = self._resampler.resample(data)
-
-        if self._au.channels != 1:
-            data = data.reshape([-1, self._au.channels])
+        data = numpy.concatenate(blocks, axis=0)
 
         return data
 
