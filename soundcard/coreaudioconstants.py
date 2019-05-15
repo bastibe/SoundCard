@@ -132,6 +132,15 @@ kAudioUnitProperty_ContextName = 25
 kAudioUnitProperty_ElementName = 30
 kAudioUnitProperty_NickName = 54
 
+kAudioUnitRenderAction_PreRender = 1 << 2
+kAudioUnitRenderAction_PostRender = 1 << 3
+kAudioUnitRenderAction_OutputIsSilence = 1 << 4
+kAudioOfflineUnitRenderAction_Preflight = 1 << 5
+kAudioOfflineUnitRenderAction_Render = 1 << 6
+kAudioOfflineUnitRenderAction_Complete = 1 << 7
+kAudioUnitRenderAction_PostRenderError = 1 << 8
+kAudioUnitRenderAction_DoNotCheckRenderArgs = 1 << 9
+
 kAudioUnitScope_Global = 0 # The context for audio unit characteristics that apply to the audio unit as a whole
 kAudioUnitScope_Input = 1 # The context for audio data coming into an audio unit
 kAudioUnitScope_Output = 2 # The context for audio data leaving an audio unit

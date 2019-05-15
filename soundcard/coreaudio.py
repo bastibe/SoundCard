@@ -755,9 +755,7 @@ class _Resampler:
         converted_data = numpy.concatenate(self.queue)
         self.queue.clear()
 
-        if self.channels != 1:
-            converted_data = converted_data.reshape([-1, self.channels])
-        return converted_data
+        return converted_data.reshape([-1, self.channels])
 
     def __del__(self):
         _au.AudioConverterDispose(self.audioconverter[0])
@@ -795,8 +793,7 @@ class _Recorder:
             bufferlist.mNumberBuffers = 1
             bufferlist.mBuffers[0].mNumberChannels = channels
             bufferlist.mBuffers[0].mDataByteSize = numframes * 4 * channels
-            data = _ffi.new("Float32[]", numframes * channels)
-            bufferlist.mBuffers[0].mData = data
+            bufferlist.mBuffers[0].mData = _ffi.NULL
 
             status = _au.AudioUnitRender(au,
                                          actionflags,
@@ -805,10 +802,21 @@ class _Recorder:
                                          numframes,
                                          bufferlist)
 
+            # special case if output is silence:
+            if (actionflags[0] == _cac.kAudioUnitRenderAction_OutputIsSilence
+                and status == _cac.kAudioUnitErr_CannotDoInCurrentContext):
+                actionflags[0] = 0 # reset actionflags
+                status = 0 # reset error code
+                data = numpy.zeros([numframes, channels], 'float32')
+            else:
+                data = numpy.frombuffer(_ffi.buffer(bufferlist.mBuffers[0].mData,
+                                                    bufferlist.mBuffers[0].mDataByteSize),
+                                        dtype='float32')
+                data = data.reshape([-1, bufferlist.mBuffers[0].mNumberChannels]).copy()
+
             if status != 0:
                 print('error during recording:', status)
 
-            data = numpy.frombuffer(_ffi.buffer(data), dtype='float32')
             self._queue.append(data)
             self._record_event.set()
             return status
@@ -834,8 +842,6 @@ class _Recorder:
         block = self._queue.popleft()
 
         # perform sample rate conversion:
-        if self._au.channels != 1:
-            block = block.reshape([-1, self._au.channels])
         if self._au.resample != 1:
             block = self._resampler.resample(block)
         return block
@@ -885,5 +891,5 @@ class _Recorder:
 
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self._au.channels])
-        self._pending_chunk = numpy.zeros([0])
+        self._pending_chunk = numpy.zeros([0, self._au.channels])
         return last_chunk
