@@ -100,7 +100,7 @@ def default_microphone():
     """
     with _PulseAudio() as p:
         name = p.server_info['default source id']
-        return get_microphone(name)
+        return get_microphone(name, exclude_monitors=False)
 
 
 def get_microphone(id, include_loopback=False, exclude_monitors=True):
