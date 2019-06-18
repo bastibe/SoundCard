@@ -286,7 +286,7 @@ def default_microphone():
     microphone : _Microphone
     """
     name = _pulse.server_info['default source id']
-    return get_microphone(name, exclude_monitors=False)
+    return get_microphone(name, include_loopback=True)
 
 
 def get_microphone(id, include_loopback=False, exclude_monitors=True):
