@@ -116,20 +116,19 @@ The same as above using ayncio. python 3.7+
 
     # task to continuously play
     async def play_speaker(selected_speaker, buffer):
-        with  selected_speaker.player(samplerate=48*1000) as sp:
+        with selected_speaker.player(samplerate=48*1000) as sp:
             while True:
                 sp.play(data.pop())
                 await asyncio.sleep(0.0000001)
 
-    # main entry point to wait forever for the task
+    # main entry point
     async def main():
         await asyncio.gather(
-            record_mic(builtin_mic, data),
-            play_speaker(bluetooth_speaker, data)
+            record_mic(default_mic, data),
+            play_speaker(default_speaker, data)
         )
 
-    asyncio.run(main())numframes=1024)
-            sp.play(data)
+    asyncio.run(main())
 
 
 Latency
