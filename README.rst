@@ -96,6 +96,42 @@ are *frames × channels* Numpy arrays.
             data = mic.record(numframes=1024)
             sp.play(data)
 
+
+The same as above using ayncio. python 3.7+ 
+
+.. code:: python
+
+    import asyncio
+    import numpy
+
+    # buffer for the data
+    data = []
+
+    # task to continuously record
+    async def record_mic(selected_mic, buffer):
+        with selected_mic.recorder(samplerate=48*1000) as mic:
+            while True:
+                buffer.append(mic.record(numframes=1024))
+                await asyncio.sleep(0.0000001)
+
+    # task to continuously play
+    async def play_speaker(selected_speaker, buffer):
+        with  selected_speaker.player(samplerate=48*1000) as sp:
+            while True:
+                sp.play(data.pop())
+                await asyncio.sleep(0.0000001)
+
+    # main entry point to wait forever for the task
+    async def main():
+        await asyncio.gather(
+            record_mic(builtin_mic, data),
+            play_speaker(bluetooth_speaker, data)
+        )
+
+    asyncio.run(main())numframes=1024)
+            sp.play(data)
+
+
 Latency
 -------
 
