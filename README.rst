@@ -130,7 +130,6 @@ The same as above using ayncio. python 3.7+
 
     asyncio.run(main())
 
-
 Latency
 -------
 
