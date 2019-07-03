@@ -199,7 +199,6 @@ class _PulseAudio:
     _pa_stream_connect_playback = _lock(_pa.pa_stream_connect_playback)
     _pa_stream_update_timing_info = _lock_and_block(_pa.pa_stream_update_timing_info)
     _pa_stream_get_latency = _lock(_pa.pa_stream_get_latency)
-    _pa_stream_get_buffer_attr = _lock(_pa.pa_stream_get_buffer_attr)
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
     _pa_stream_set_read_callback = _pa.pa_stream_set_read_callback
@@ -656,7 +655,6 @@ class _Player(_Stream):
             data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
-        bufattr = _pulse._pa_stream_get_buffer_attr(self.stream)
         while data.nbytes > 0:
             nwrite = _pulse._pa_stream_writable_size(self.stream) // 4
             if nwrite == 0:
