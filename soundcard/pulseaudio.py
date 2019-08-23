@@ -582,7 +582,7 @@ class _Stream:
             time.sleep(0.01)
         if _pulse._pa_stream_get_state(self.stream) == _pa.PA_STREAM_FAILED:
             raise RuntimeError('Stream creation failed. Stream is in status {}'
-                               .format(_pulse.pa_stream_get_state(self.stream)))
+                               .format(_pulse._pa_stream_get_state(self.stream)))
         channel_map = _pulse._pa_stream_get_channel_map(self.stream)
         self.channels = int(channel_map.channels)
         return self
