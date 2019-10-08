@@ -166,3 +166,10 @@ Changelog
   (Thank you, Daniel R. Kumor!)
 - 2019-04-29 adds experimental support for exclusive mode on Windows
 - 2019-05-13 fixes sample rate conversion on macOS
+- 2019-05-15 fixes silence recording on macOS
+- 2019-06-11 fixes exception when monitoring default device on Linux
+  (Thank you, Inti Pelupessy!)
+- 2019-06-18 fixes crash when opening many streams on Linux
+- 2019-08-23 fixes attribute error when accessing stream state on Linux
+  (Thank you, Davíð Sindri Pétursson)
+- 2019-10-08 fixes inconsistent dtypes when recording on Linux
