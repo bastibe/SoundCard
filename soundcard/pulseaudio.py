@@ -679,7 +679,7 @@ class _Recorder(_Stream):
 
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
-        self._pending_chunk = numpy.zeros((0, ))
+        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
         self._record_event = threading.Event()
 
     def _connect_stream(self, bufattr):
@@ -779,5 +779,5 @@ class _Recorder(_Stream):
 
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = numpy.zeros((0, ))
+        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
         return last_chunk
