@@ -698,7 +698,12 @@ class _Recorder(_AudioClient):
 
         """
 
+        empty_frames = 0
         while not self._capture_available_frames():
+            empty_frames += 1
+            if empty_frames > 10:
+                # no data for 10 ms: give up.
+                return numpy.zeros([0], dtype='float32')
             time.sleep(0.001)
         data_ptr, nframes, flags = self._capture_buffer()
         if data_ptr != _ffi.NULL:
@@ -709,7 +714,7 @@ class _Recorder(_AudioClient):
             self._capture_release(nframes)
             return chunk
         else:
-            return numpy.zeros([0])
+            return numpy.zeros([0], dtype='float32')
 
     def record(self, numframes=None):
         """Record a block of audio data.
@@ -741,6 +746,10 @@ class _Recorder(_AudioClient):
             required_frames = numframes*len(set(self.channelmap))
             while recorded_frames < required_frames:
                 chunk = self._record_chunk()
+                if len(chunk) == 0:
+                    # no data forthcoming: return zeros
+                    chunk = numpy.zeros(required_frames-recorded_frames,
+                                        dtype='float32')
                 recorded_data.append(chunk)
                 recorded_frames += len(chunk)
             if recorded_frames > required_frames:
