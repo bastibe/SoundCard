@@ -123,6 +123,19 @@ usually no problem. The total latency of playback and recording is dependent on
 how these buffers are handled by the operating system, though, and might be
 significantly higher.
 
+Additionally, it might help to experiment with advice from here: https://askubuntu.com/questions/707171/how-can-i-fix-choppy-audio and edit your /etc/pulse/default.pa file to replace the line saying ::
+
+    load-module module-udev-detect 
+
+with ::
+
+    load-module module-udev-detect tsched=0 
+
+and then do not forget to restart pulseaudio with ::
+
+    pulseaudio -k
+
+
 Channel Maps
 ------------
 
