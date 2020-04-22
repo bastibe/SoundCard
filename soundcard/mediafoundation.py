@@ -178,6 +178,15 @@ def _guidof(uuid_str):
     _com.check_error(hr)
     return IID
 
+
+def get_name():
+    raise NotImplementedError()
+
+
+def set_name(name):
+    raise NotImplementedError()
+
+
 class _DeviceEnumerator:
     """Wrapper class for an IMMDeviceEnumerator**.
 

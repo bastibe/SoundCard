@@ -87,6 +87,33 @@ class _PulseAudio:
             time.sleep(0.001)
 
     @property
+    def name(self):
+        """Return application name stored in client proplist"""
+        idx = self._pa_context_get_index(self.context)
+        # TODO: idx can be PA_INVALID_INDEX now
+        name = None
+        @_ffi.callback("pa_client_info_cb_t")
+        def callback(context, client_info, eol, userdata):
+            nonlocal name
+            if not eol:
+                name = _ffi.string(client_info.name).decode('utf-8')
+        self._pa_context_get_client_info(self.context, idx, callback, _ffi.NULL)
+        assert name is not None
+        return name
+
+    @name.setter
+    def name(self, name):
+        rv = None
+        @_ffi.callback("pa_context_success_cb_t")
+        def callback(context, success, userdata):
+            nonlocal rv
+            rv = success
+        self._pa_context_set_name(self.context, name.encode(), callback, _ffi.NULL)
+        assert rv is not None
+        if rv == 0:
+            raise RuntimeError("Setting PulseAudio context name failed")
+
+    @property
     def source_list(self):
         """Return a list of dicts of information about available sources."""
         info = []
@@ -178,8 +205,11 @@ class _PulseAudio:
     _pa_context_get_source_info_by_name = _lock_and_block(_pa.pa_context_get_source_info_by_name)
     _pa_context_get_sink_info_list = _lock_and_block(_pa.pa_context_get_sink_info_list)
     _pa_context_get_sink_info_by_name = _lock_and_block(_pa.pa_context_get_sink_info_by_name)
+    _pa_context_get_client_info = _lock_and_block(_pa.pa_context_get_client_info)
     _pa_context_get_server_info = _lock_and_block(_pa.pa_context_get_server_info)
+    _pa_context_get_index = _lock(_pa.pa_context_get_index)
     _pa_context_get_state = _lock(_pa.pa_context_get_state)
+    _pa_context_set_name = _lock_and_block(_pa.pa_context_set_name)
     _pa_context_drain = _lock(_pa.pa_context_drain)
     _pa_context_disconnect = _lock(_pa.pa_context_disconnect)
     _pa_context_unref = _lock(_pa.pa_context_unref)
@@ -343,6 +373,28 @@ def _match_soundcard(id, soundcards, include_loopback=False):
         if re.match(pattern, name):
             return soundcard
     raise IndexError('no soundcard with id {}'.format(id))
+
+
+def get_name():
+    """Get application name.
+
+    Returns
+    -------
+    name : str
+    """
+    return _pulse.name
+
+
+def set_name(name):
+    """Set application name.
+
+    Parameters
+    ----------
+    name :  str
+        The application using the soundcard
+        will be identified by the OS using this name.
+    """
+    _pulse.name = name
 
 
 class _SoundCard:

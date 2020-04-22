@@ -30,6 +30,12 @@ def test_default_record():
 def test_default_blockless_record():
     recording = soundcard.default_microphone().record(None, 44100)
 
+@pytest.mark.skipif(sys.platform != 'linux', reason='Only implemented for PulseAudio so far')
+def test_name():
+    assert soundcard.get_name() == 'audio'
+    soundcard.set_name('testapp')
+    assert soundcard.get_name() == 'testapp'
+
 @pytest.fixture
 def loopback_speaker():
     import sys
