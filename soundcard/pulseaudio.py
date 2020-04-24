@@ -1,13 +1,14 @@
 import os
 import atexit
 import collections
-import sys
 import time
 import re
 import threading
 import warnings
 import numpy
 import cffi
+
+from .infer_program_name import infer_program_name
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -64,8 +65,7 @@ class _PulseAudio:
         # don't need to hold the lock:
         self.mainloop = _pa.pa_threaded_mainloop_new()
         self.mainloop_api = _pa.pa_threaded_mainloop_get_api(self.mainloop)
-        program_name = os.fsencode(os.path.basename(sys.argv[0]))
-        self.context = _pa.pa_context_new(self.mainloop_api, program_name)
+        self.context = _pa.pa_context_new(self.mainloop_api, infer_program_name())
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
