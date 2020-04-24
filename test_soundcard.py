@@ -32,7 +32,9 @@ def test_default_blockless_record():
 
 @pytest.mark.skipif(sys.platform != 'linux', reason='Only implemented for PulseAudio so far')
 def test_name():
-    assert soundcard.get_name() == 'audio'
+    # The default is the application name, so when run from pytest,
+    # it’s “pytest” or “_jb_pytest_runner.py” or so.
+    assert 'pytest' in soundcard.get_name()
     soundcard.set_name('testapp')
     assert soundcard.get_name() == 'testapp'
 
