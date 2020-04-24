@@ -90,7 +90,8 @@ class _PulseAudio:
     def name(self):
         """Return application name stored in client proplist"""
         idx = self._pa_context_get_index(self.context)
-        # TODO: idx can be PA_INVALID_INDEX now
+        if idx < 0:  # PA_INVALID_INDEX == -1
+            raise RuntimeError("Could not get client index of PulseAudio context.")
         name = None
         @_ffi.callback("pa_client_info_cb_t")
         def callback(context, client_info, eol, userdata):
