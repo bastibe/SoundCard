@@ -3,6 +3,8 @@ import soundcard
 import numpy
 import pytest
 
+skip_if_not_linux = pytest.mark.skipif(sys.platform != 'linux', reason='Only implemented for PulseAudio so far')
+
 ones = numpy.ones(1024)
 signal = numpy.concatenate([[ones], [-ones]]).T
 
@@ -30,13 +32,27 @@ def test_default_record():
 def test_default_blockless_record():
     recording = soundcard.default_microphone().record(None, 44100)
 
-@pytest.mark.skipif(sys.platform != 'linux', reason='Only implemented for PulseAudio so far')
+@skip_if_not_linux
 def test_name():
     # The default is the application name, so when run from pytest,
     # it’s “pytest” or “_jb_pytest_runner.py” or so.
     assert 'pytest' in soundcard.get_name()
     soundcard.set_name('testapp')
     assert soundcard.get_name() == 'testapp'
+
+@skip_if_not_linux
+@pytest.mark.parametrize("argv,progname", [
+    (["./script.py"], "script.py"),  # chmod +x script.py; ./script.py
+    (["path/to/script.py"], "script.py"),  # python path/to/script.py or
+                                           # python -m path.to.script
+    (["module/__main__.py"], "module"),  # python -m module
+    (["-m", "module.submodule"], "module.submodule"),  # rare unresolved case
+    (["-c", "import soundcard; soundcard.foo()"], "import soundcard; soundcard.fo..."),
+])
+def test_infer_name(monkeypatch, argv, progname):
+    infer = soundcard.pulseaudio._PulseAudio._infer_program_name
+    monkeypatch.setattr(sys, "argv", argv)
+    assert infer() == progname
 
 @pytest.fixture
 def loopback_speaker():

@@ -8,8 +8,6 @@ import warnings
 import numpy
 import cffi
 
-from .infer_program_name import infer_program_name
-
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
@@ -65,12 +63,34 @@ class _PulseAudio:
         # don't need to hold the lock:
         self.mainloop = _pa.pa_threaded_mainloop_new()
         self.mainloop_api = _pa.pa_threaded_mainloop_get_api(self.mainloop)
-        self.context = _pa.pa_context_new(self.mainloop_api, infer_program_name())
+        self.context = _pa.pa_context_new(self.mainloop_api, self._infer_program_name().encode())
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
         while self._pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
             time.sleep(0.001)
+
+    @staticmethod
+    def _infer_program_name():
+        """Get current progam name.
+
+        Will handle `./script.py`, `python path/to/script.py`,
+        `python -m module.submodule` and `python -c 'code(x=y)'`.
+        See https://docs.python.org/3/using/cmdline.html#interface-options
+        """
+        import sys
+        prog_name = sys.argv[0]
+        if prog_name == "-c":
+            return sys.argv[1][:30] + "..."
+        if prog_name == "-m":
+            prog_name = sys.argv[1]
+        # Usually even with -m, sys.argv[0] will already be a path,
+        # so do the following outside the above check
+        main_str = "/__main__.py"
+        if prog_name.endswith(main_str):
+            prog_name = prog_name[:-len(main_str)]
+        # Not handled: sys.argv[0] == "-"
+        return os.path.basename(prog_name)
 
     def _shutdown(self):
         operation = self._pa_context_drain(self.context, _ffi.NULL, _ffi.NULL)
