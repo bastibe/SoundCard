@@ -401,6 +401,9 @@ def _match_soundcard(id, soundcards, include_loopback=False):
 def get_name():
     """Get application name.
 
+    .. note::
+       Currently only works on Linux.
+
     Returns
     -------
     name : str
@@ -410,6 +413,9 @@ def get_name():
 
 def set_name(name):
     """Set application name.
+
+    .. note::
+       Currently only works on Linux.
 
     Parameters
     ----------
