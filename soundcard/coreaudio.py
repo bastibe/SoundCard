@@ -105,6 +105,14 @@ def _match_device(id, devices):
     raise IndexError('no device with id {}'.format(id))
 
 
+def get_name():
+    raise NotImplementedError()
+
+
+def set_name(name):
+    raise NotImplementedError()
+
+
 class _Soundcard:
     """A soundcard. This is meant to be subclassed.
 

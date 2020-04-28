@@ -63,12 +63,34 @@ class _PulseAudio:
         # don't need to hold the lock:
         self.mainloop = _pa.pa_threaded_mainloop_new()
         self.mainloop_api = _pa.pa_threaded_mainloop_get_api(self.mainloop)
-        self.context = _pa.pa_context_new(self.mainloop_api, b"audio")
+        self.context = _pa.pa_context_new(self.mainloop_api, self._infer_program_name().encode())
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
         while self._pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
             time.sleep(0.001)
+
+    @staticmethod
+    def _infer_program_name():
+        """Get current progam name.
+
+        Will handle `./script.py`, `python path/to/script.py`,
+        `python -m module.submodule` and `python -c 'code(x=y)'`.
+        See https://docs.python.org/3/using/cmdline.html#interface-options
+        """
+        import sys
+        prog_name = sys.argv[0]
+        if prog_name == "-c":
+            return sys.argv[1][:30] + "..."
+        if prog_name == "-m":
+            prog_name = sys.argv[1]
+        # Usually even with -m, sys.argv[0] will already be a path,
+        # so do the following outside the above check
+        main_str = "/__main__.py"
+        if prog_name.endswith(main_str):
+            prog_name = prog_name[:-len(main_str)]
+        # Not handled: sys.argv[0] == "-"
+        return os.path.basename(prog_name)
 
     def _shutdown(self):
         operation = self._pa_context_drain(self.context, _ffi.NULL, _ffi.NULL)
@@ -85,6 +107,34 @@ class _PulseAudio:
             return
         while self._pa_operation_get_state(operation) == _pa.PA_OPERATION_RUNNING:
             time.sleep(0.001)
+
+    @property
+    def name(self):
+        """Return application name stored in client proplist"""
+        idx = self._pa_context_get_index(self.context)
+        if idx < 0:  # PA_INVALID_INDEX == -1
+            raise RuntimeError("Could not get client index of PulseAudio context.")
+        name = None
+        @_ffi.callback("pa_client_info_cb_t")
+        def callback(context, client_info, eol, userdata):
+            nonlocal name
+            if not eol:
+                name = _ffi.string(client_info.name).decode('utf-8')
+        self._pa_context_get_client_info(self.context, idx, callback, _ffi.NULL)
+        assert name is not None
+        return name
+
+    @name.setter
+    def name(self, name):
+        rv = None
+        @_ffi.callback("pa_context_success_cb_t")
+        def callback(context, success, userdata):
+            nonlocal rv
+            rv = success
+        self._pa_context_set_name(self.context, name.encode(), callback, _ffi.NULL)
+        assert rv is not None
+        if rv == 0:
+            raise RuntimeError("Setting PulseAudio context name failed")
 
     @property
     def source_list(self):
@@ -178,8 +228,11 @@ class _PulseAudio:
     _pa_context_get_source_info_by_name = _lock_and_block(_pa.pa_context_get_source_info_by_name)
     _pa_context_get_sink_info_list = _lock_and_block(_pa.pa_context_get_sink_info_list)
     _pa_context_get_sink_info_by_name = _lock_and_block(_pa.pa_context_get_sink_info_by_name)
+    _pa_context_get_client_info = _lock_and_block(_pa.pa_context_get_client_info)
     _pa_context_get_server_info = _lock_and_block(_pa.pa_context_get_server_info)
+    _pa_context_get_index = _lock(_pa.pa_context_get_index)
     _pa_context_get_state = _lock(_pa.pa_context_get_state)
+    _pa_context_set_name = _lock_and_block(_pa.pa_context_set_name)
     _pa_context_drain = _lock(_pa.pa_context_drain)
     _pa_context_disconnect = _lock(_pa.pa_context_disconnect)
     _pa_context_unref = _lock(_pa.pa_context_unref)
@@ -343,6 +396,34 @@ def _match_soundcard(id, soundcards, include_loopback=False):
         if re.match(pattern, name):
             return soundcard
     raise IndexError('no soundcard with id {}'.format(id))
+
+
+def get_name():
+    """Get application name.
+
+    .. note::
+       Currently only works on Linux.
+
+    Returns
+    -------
+    name : str
+    """
+    return _pulse.name
+
+
+def set_name(name):
+    """Set application name.
+
+    .. note::
+       Currently only works on Linux.
+
+    Parameters
+    ----------
+    name :  str
+        The application using the soundcard
+        will be identified by the OS using this name.
+    """
+    _pulse.name = name
 
 
 class _SoundCard:

@@ -184,6 +184,10 @@ from mock import Mock as MagicMock
 class Mock(MagicMock):
     @classmethod
     def __getattr__(cls, name):
-        return MagicMock()
+        return Mock()
+
+    def __eq__(self, other):
+        # so _pa_context_get_state() == PA_CONTEXT_READY
+        return isinstance(other, Mock)
 
 sys.modules.update({'cffi': Mock()})

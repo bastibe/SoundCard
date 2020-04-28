@@ -322,7 +322,20 @@ typedef void (*pa_source_info_cb_t)(pa_context *c, const pa_source_info *i, int 
 pa_operation* pa_context_get_source_info_list(pa_context *c, pa_source_info_cb_t cb, void *userdata);
 pa_operation* pa_context_get_source_info_by_name(pa_context *c, const char *name, pa_source_info_cb_t cb, void *userdata);
 typedef void (*pa_context_notify_cb)(pa_context *c, void *userdata);
-pa_operation *pa_context_drain(pa_context *c, pa_context_notify_cb cb, void *userdata);
+pa_operation* pa_context_drain(pa_context *c, pa_context_notify_cb cb, void *userdata);
+typedef void (*pa_context_success_cb_t)(pa_context *c, int success, void *userdata);
+pa_operation* pa_context_set_name(pa_context *c, const char *name, pa_context_success_cb_t cb, void *userdata);
+uint32_t pa_context_get_index(const pa_context *s);
+
+typedef struct pa_client_info {
+    uint32_t index;
+    const char *name;
+    uint32_t owner_module;
+    const char *driver;
+    pa_proplist *proplist;
+} pa_client_info;
+typedef void (*pa_client_info_cb_t) (pa_context *c, const pa_client_info*i, int eol, void *userdata);
+pa_operation* pa_context_get_client_info(pa_context *c, uint32_t idx, pa_client_info_cb_t cb, void *userdata);
 
 typedef struct pa_server_info {
     const char *user_name;
