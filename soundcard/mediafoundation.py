@@ -2,10 +2,12 @@
 
 import os
 import cffi
-import numpy
-import time
 import re
+import time
+import struct
 import collections
+
+import numpy
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -361,7 +363,7 @@ class _Device:
         for idx in range(256):
             if data[idx] == 0:
                 break
-        devicename = ''.join(chr(c) for c in data[0:idx])
+        devicename = struct.pack('h' * idx, *data[0:idx]).decode('utf-16')
         _com.release(ppPropertyStore)
         return devicename
 
