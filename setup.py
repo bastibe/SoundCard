@@ -7,7 +7,7 @@ setup(
     author='Bastian Bechtold',
     url='https://github.com/bastibe/SoundCard',
     license='BSD 3-clause',
-    packages=['soundcard'],
+    packages=['soundcard', 'soundcard.__pyinstaller'],
     package_data={'soundcard': ['*.py.h']},
     install_requires=['numpy', 'cffi'],
     python_requires='>=3.5',
