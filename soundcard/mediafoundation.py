@@ -2,19 +2,17 @@
 
 import os
 import cffi
-import re
-import time
-import struct
-import collections
-
 import numpy
+import time
+import re
+import collections
+import platform
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
-_combase = _ffi.dlopen('combase')
 _ole32 = _ffi.dlopen('ole32')
 
 class _COMLibrary:
@@ -29,7 +27,15 @@ class _COMLibrary:
 
     def __init__(self):
         COINIT_MULTITHREADED = 0x0
-        hr = _combase.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
+        if platform.win32_ver()[0] == '8':
+            # On Windows 8, according to Microsoft, the first use of 
+            # IAudioClient should be from the STA thread. Calls from 
+            # an MTA thread may result in undefined behavior.
+            
+            # CoInitialize initialises calling thread to STA.
+            hr = _ole32.CoInitialize(_ffi.NULL)
+        else:
+            hr = _ole32.CoInitializeEx(_ffi.NULL, COINIT_MULTITHREADED)
 
         try:
             self.check_error(hr)
@@ -55,7 +61,7 @@ class _COMLibrary:
         # Don't un-initialize COM if COM was not initialized directly
         # by this class:
         if self.com_loaded:
-            _combase.CoUninitialize()
+            _ole32.CoUninitialize()
 
     @staticmethod
     def check_error(hresult):
@@ -176,7 +182,7 @@ def _guidof(uuid_str):
     IID = _ffi.new('LPIID')
     # convert to zero terminated wide string
     uuid = _str2wstr(uuid_str)
-    hr = _combase.IIDFromString(_ffi.cast("char*", uuid), IID)
+    hr = _ole32.IIDFromString(_ffi.cast("char*", uuid), IID)
     _com.check_error(hr)
     return IID
 
@@ -203,7 +209,7 @@ class _DeviceEnumerator:
         IID_IMMDeviceEnumerator = _guidof("{A95664D2-9614-4F35-A746-DE8DB63617E6}")
         # see shared/WTypesbase.h and um/combaseapi.h:
         CLSCTX_ALL = 23
-        hr = _combase.CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL, CLSCTX_ALL,
+        hr = _ole32.CoCreateInstance(IID_MMDeviceEnumerator, _ffi.NULL, CLSCTX_ALL,
                                   IID_IMMDeviceEnumerator, _ffi.cast("void **", self._ptr))
         _com.check_error(hr)
 
@@ -314,7 +320,7 @@ class _PropVariant:
 
     """
     def __init__(self):
-        self.ptr = _combase.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
+        self.ptr = _ole32.CoTaskMemAlloc(_ffi.sizeof('PROPVARIANT'))
         self.ptr = _ffi.cast("PROPVARIANT *", self.ptr)
 
     def __del__(self):
@@ -363,7 +369,7 @@ class _Device:
         for idx in range(256):
             if data[idx] == 0:
                 break
-        devicename = struct.pack('h' * idx, *data[0:idx]).decode('utf-16')
+        devicename = ''.join(chr(c) for c in data[0:idx])
         _com.release(ppPropertyStore)
         return devicename
 
@@ -522,9 +528,9 @@ class _AudioClient:
         # ppMixFormat[0][0].dwChannelMask=channelmask
 
         if exclusive_mode:
-            sharemode = _combase.AUDCLNT_SHAREMODE_EXCLUSIVE
+            sharemode = _ole32.AUDCLNT_SHAREMODE_EXCLUSIVE
         else:
-            sharemode = _combase.AUDCLNT_SHAREMODE_SHARED
+            sharemode = _ole32.AUDCLNT_SHAREMODE_SHARED
         #             resample   | remix      | better-SRC | nopersist
         streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
         if isloopback:
@@ -532,7 +538,7 @@ class _AudioClient:
         bufferduration = int(blocksize/samplerate * 10000000) # in hecto-nanoseconds (1000_000_0)
         hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
         _com.check_error(hr)
-        _combase.CoTaskMemFree(ppMixFormat[0])
+        _ole32.CoTaskMemFree(ppMixFormat[0])
 
     @property
     def buffersize(self):
