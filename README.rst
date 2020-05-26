@@ -125,11 +125,11 @@ significantly higher.
 
 Additionally, it might help to experiment with advice from here: https://askubuntu.com/questions/707171/how-can-i-fix-choppy-audio and edit your /etc/pulse/default.pa file to replace the line saying ::
 
-    load-module module-udev-detect 
+    load-module module-udev-detect
 
 with ::
 
-    load-module module-udev-detect tsched=0 
+    load-module module-udev-detect tsched=0
 
 and then do not forget to restart pulseaudio with ::
 
@@ -184,5 +184,14 @@ Changelog
   (Thank you, Inti Pelupessy!)
 - 2019-06-18 fixes crash when opening many streams on Linux
 - 2019-08-23 fixes attribute error when accessing stream state on Linux
-  (Thank you, Davíð Sindri Pétursson)
+  (Thank you, Davíð Sindri Pétursson!)
 - 2019-10-08 fixes inconsistent dtypes when recording on Linux
+- 2020-01-06 fixes silent recordings on Windows
+- 2020-04-28 get and set the pulseaudio program name on Linux
+  (Thank you, Philipp A.!)
+- 2020-05-14 fixes error with unicode soundcard names on Windows
+  (Thank you, BAKEZQ!)
+- 2020-05-18 adds support for pyinstaller (v4)
+  (Thank you, Bob Thomas!)
+- 2020-05-19 adds compatibility with Windows 7
+  (Thank you, demberto!)
