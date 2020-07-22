@@ -67,8 +67,9 @@ class _PulseAudio:
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
-        while self._pa_context_get_state(self.context) != _pa.PA_CONTEXT_READY:
+        while self._pa_context_get_state(self.context) in (_pa.PA_CONTEXT_UNCONNECTED, _pa.PA_CONTEXT_CONNECTING, _pa.PA_CONTEXT_AUTHORIZING, _pa.PA_CONTEXT_SETTING_NAME):
             time.sleep(0.001)
+        assert self._pa_context_get_state(self.context)==_pa.PA_CONTEXT_READY
 
     @staticmethod
     def _infer_program_name():
