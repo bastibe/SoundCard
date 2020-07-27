@@ -288,7 +288,7 @@ def get_speaker(id):
 
     Parameters
     ----------
-    id : int or str
+    id : str
         can be a backend id string, a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
 
@@ -350,7 +350,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
 
     Parameters
     ----------
-    id : int or str
+    id : str
         can be a backend id string, a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
     include_loopback : bool
