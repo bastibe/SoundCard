@@ -289,7 +289,7 @@ def get_speaker(id):
     Parameters
     ----------
     id : int or str
-        can be an int index, a backend id, a substring of the
+        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
 
     Returns
@@ -351,7 +351,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     Parameters
     ----------
     id : int or str
-        can be an int index, a backend id, a substring of the
+        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
         speaker name, or a fuzzy-matched pattern for the speaker name.
     include_loopback : bool
         allow recording of speaker outputs
