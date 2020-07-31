@@ -632,6 +632,8 @@ class _Stream:
 
     def __enter__(self):
         samplespec = _ffi.new("pa_sample_spec*")
+        channelmap = _ffi.new("pa_channel_map*")
+
         samplespec.format = _pa.PA_SAMPLE_FLOAT32LE
         samplespec.rate = self._samplerate
         if isinstance(self.channels, collections.Iterable):
@@ -643,7 +645,6 @@ class _Stream:
         if not _pulse._pa_sample_spec_valid(samplespec):
             raise RuntimeError('invalid sample spec')
 
-        channelmap = _ffi.new("pa_channel_map*")
         channelmap = _pa.pa_channel_map_init_auto(channelmap, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
         if isinstance(self.channels, collections.Iterable):
             for idx, ch in enumerate(self.channels):
