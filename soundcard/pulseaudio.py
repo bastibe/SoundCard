@@ -237,6 +237,7 @@ class _PulseAudio:
     _pa_context_drain = _lock(_pa.pa_context_drain)
     _pa_context_disconnect = _lock(_pa.pa_context_disconnect)
     _pa_context_unref = _lock(_pa.pa_context_unref)
+    _pa_context_errno = _lock(_pa.pa_context_errno)
     _pa_operation_get_state = _lock(_pa.pa_operation_get_state)
     _pa_operation_unref = _lock(_pa.pa_operation_unref)
     _pa_stream_get_state = _lock(_pa.pa_stream_get_state)

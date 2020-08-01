@@ -159,6 +159,7 @@ typedef enum pa_context_flags {PA_CONTEXT_NOFLAGS = 0} pa_context_flags_t;
 typedef struct pa_spawn_api pa_spawn_api;
 int pa_context_connect(pa_context *c, const char *server, pa_context_flags_t flags, const pa_spawn_api *api);
 void pa_context_disconnect(pa_context *c);
+int pa_context_errno(const pa_context *c);
 typedef enum pa_context_state {
     PA_CONTEXT_UNCONNECTED,
     PA_CONTEXT_CONNECTING,
