@@ -653,6 +653,9 @@ class _Stream:
             raise RuntimeError('invalid channel map')
 
         self.stream = _pulse._pa_stream_new(_pulse.context, self._name.encode(), samplespec, channelmap)
+        if not self.stream:
+            errno = _pulse._pa_context_errno(_pulse.context)
+            raise RuntimeError("stream creation failed with error ", errno)
         bufattr = _ffi.new("pa_buffer_attr*")
         bufattr.maxlength = 2**32-1 # max buffer length
         numchannels = self.channels if isinstance(self.channels, int) else len(self.channels)
