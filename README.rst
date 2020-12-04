@@ -154,7 +154,7 @@ FAQ
 ---
 Q: How to make it work on a headless Raspberry Pi?  
 
-A: PulseAudio is not installed by default on the Raspberry Pi OS Lite distribution (https://www.raspberrypi.org/software/operating-systems/). In order to use ``soundcard``, you have to install PulseAudio first, and edit the configuration (with a fix to avoid the main output to be in mono-only) :: 
+A: PulseAudio is not installed by default on the Raspberry Pi OS Lite distribution (https://www.raspberrypi.org/software/operating-systems/). In order to use ``soundcard``, you have to install PulseAudio first, and edit the configuration (with a fix to avoid the main output to be in mono-only). :: 
 
     sudo apt install -y python3-pip python3-numpy pulseaudio 
     sudo nano /usr/share/pulseaudio/alsa-mixer/profile-sets/default.conf  
