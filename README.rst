@@ -150,6 +150,19 @@ In addition, pulseaudio/Linux defines channel ``-1`` as the mono mix of all
 channels for both playback and recording. CoreAudio/macOS defines channel ``-1``
 as silence for both playback and recording.
 
+FAQ
+---
+Q: How to make it work on a headless Raspberry Pi?  
+
+A: PulseAudio is not installed by default on the Raspberry Pi OS Lite distribution (https://www.raspberrypi.org/software/operating-systems/). In order to use ``soundcard``, you have to install PulseAudio first, and edit the configuration (with a fix to avoid the main output to be in mono-only) :: 
+
+    sudo apt install -y python3-pip python3-numpy pulseaudio 
+    sudo nano /usr/share/pulseaudio/alsa-mixer/profile-sets/default.conf  
+    # comment the block [Mapping analog-mono] with ';'
+    pulseaudio -D
+    python3 -m pip install soundcard
+
+
 Known Issues:
 -------------
 
