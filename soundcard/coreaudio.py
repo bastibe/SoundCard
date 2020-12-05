@@ -13,8 +13,8 @@ _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
-_ca = _ffi.dlopen('CoreAudio')
-_au = _ffi.dlopen('AudioUnit')
+_ca = _ffi.dlopen('/System/Library/Frameworks/CoreAudio.framework/Versions/Current/CoreAudio')
+_au = _ffi.dlopen('/System/Library/Frameworks/AudioUnit.framework/Versions/Current/AudioUnit')
 
 from soundcard import coreaudioconstants as _cac
 
