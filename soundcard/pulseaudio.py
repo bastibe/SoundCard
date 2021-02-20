@@ -369,8 +369,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
         include_loopback = not exclude_monitors
 
     microphones = _pulse.source_list
-    return _Microphone(id=_match_soundcard(str(id), microphones, include_loopback)['id'])
-
+    return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
 
 def _match_soundcard(id, soundcards, include_loopback=False):
     """Find id in a list of soundcards.
@@ -390,7 +389,7 @@ def _match_soundcard(id, soundcards, include_loopback=False):
     # index search
     try:
         return soundcards[int(id)]
-    except (ValueError):
+    except (ValueError,IndexError):
         pass
 
     # id search
