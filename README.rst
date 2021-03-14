@@ -152,12 +152,12 @@ as silence for both playback and recording.
 
 FAQ
 ---
-Q: How to make it work on a headless Raspberry Pi?  
+Q: How to make it work on a headless Raspberry Pi?
 
-A: PulseAudio is not installed by default on the Raspberry Pi OS Lite distribution (https://www.raspberrypi.org/software/operating-systems/). In order to use ``soundcard``, you have to install PulseAudio first, and edit the configuration (with a fix to avoid the main output to be in mono-only). :: 
+A: PulseAudio is not installed by default on the Raspberry Pi OS Lite distribution (https://www.raspberrypi.org/software/operating-systems/). In order to use ``soundcard``, you have to install PulseAudio first, and edit the configuration (with a fix to avoid the main output to be in mono-only). ::
 
-    sudo apt install -y python3-pip python3-numpy pulseaudio 
-    sudo nano /usr/share/pulseaudio/alsa-mixer/profile-sets/default.conf  
+    sudo apt install -y python3-pip python3-numpy pulseaudio
+    sudo nano /usr/share/pulseaudio/alsa-mixer/profile-sets/default.conf
     # comment the block [Mapping analog-mono] with ';'
     pulseaudio -D
     python3 -m pip install soundcard
@@ -208,3 +208,11 @@ Changelog
   (Thank you, Bob Thomas!)
 - 2020-05-19 adds compatibility with Windows 7
   (Thank you, demberto!)
+- 2020-07-22 fixes freezing bug on Linux during startup
+  (Thank you, zhujisheng!)
+- 2020-08-01 improves error reporting on Linux
+  (Thank you, Rik van Riel!)
+- 2020-08-13 fixes crash due to use-after-free on Linux
+  (Thank you, Rik van Riel!)
+- 2021-01-13 fixes unicode error on Windows
+  (Thank you, paulzzh!)
