@@ -13,8 +13,12 @@ _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
-_pa = _ffi.dlopen('pulse')
-
+try:
+    _pa = _ffi.dlopen('pulse')
+except:
+    # Need sometimes explicite sharedobject name on Linux
+    _pa = _ffi.dlopen('libpulse.so')
+    
 # First, we need to define a global _PulseAudio proxy for interacting
 # with the C API:
 
