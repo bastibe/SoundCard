@@ -15,7 +15,7 @@ with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
 
 try:
     _pa = _ffi.dlopen('pulse')
-except:
+except OSError:
     # Need sometimes explicite sharedobject name on Linux
     _pa = _ffi.dlopen('libpulse.so')
     
