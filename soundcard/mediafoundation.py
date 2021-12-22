@@ -487,7 +487,7 @@ class _AudioClient:
 
         if isinstance(channels, int):
             self.channelmap = list(range(channels))
-        elif isinstance(channels, collections.Iterable):
+        elif isinstance(channels, collections.abc.Iterable):
             self.channelmap = channels
         else:
             raise TypeError('channels must be iterable or integer')

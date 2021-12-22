@@ -639,7 +639,7 @@ class _Stream:
         samplespec = _ffi.new("pa_sample_spec*")
         samplespec.format = _pa.PA_SAMPLE_FLOAT32LE
         samplespec.rate = self._samplerate
-        if isinstance(self.channels, collections.Iterable):
+        if isinstance(self.channels, collections.abc.Iterable):
             samplespec.channels = len(self.channels)
         elif isinstance(self.channels, int):
             samplespec.channels = self.channels
@@ -652,7 +652,7 @@ class _Stream:
         # names to avoid garbage collection trouble on the Python/C boundary
         pam = _ffi.new("pa_channel_map*")
         channelmap = _pa.pa_channel_map_init_auto(pam, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
-        if isinstance(self.channels, collections.Iterable):
+        if isinstance(self.channels, collections.abc.Iterable):
             for idx, ch in enumerate(self.channels):
                 channelmap.map[idx] = ch+1
         if not _pa.pa_channel_map_valid(channelmap):
