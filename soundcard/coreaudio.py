@@ -465,7 +465,7 @@ class _AudioUnit:
                             .format(self.blocksizerange[0],
                                     maxblocksize))
 
-        if isinstance(channels, collections.Iterable):
+        if isinstance(channels, collections.abc.Iterable):
             if iotype == 'output':
                 # invert channel map and fill with -1 ([2, 0] -> [1, -1, 0]):
                 self.channels = len([c for c in channels if c >= 0])
