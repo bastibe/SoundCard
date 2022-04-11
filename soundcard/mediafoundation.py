@@ -499,7 +499,7 @@ class _AudioClient:
         if blocksize is None:
             blocksize = self.deviceperiod[0]*samplerate
 
-        ppMixFormat = _ffi.new('WAVEFORMATEXTENSIBLE**')
+        ppMixFormat = _ffi.new('WAVEFORMATEXTENSIBLE**') # See: https://docs.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatextensible
         hr = self._ptr[0][0].lpVtbl.GetMixFormat(self._ptr[0], ppMixFormat)
         _com.check_error(hr)
 
@@ -529,16 +529,25 @@ class _AudioClient:
         # does not work:
         # ppMixFormat[0][0].dwChannelMask=channelmask
 
-        if exclusive_mode:
+        streamflags =  0x00080000 # nopersist, see: https://docs.microsoft.com/en-us/windows/win32/coreaudio/audclnt-streamflags-xxx-constants
+        if exclusive_mode: # See: https://docs.microsoft.com/en-us/windows/win32/coreaudio/exclusive-mode-streams
             sharemode = _ole32.AUDCLNT_SHAREMODE_EXCLUSIVE
+            periodicity = 0 # 0 uses default, must set value if using AUDCLNT_STREAMFLAGS_EVENTCALLBACK (0x00040000)
+            if isloopback:
+                raise RuntimeError("Loopback mode and exclusive mode are incompatible.")
         else:
             sharemode = _ole32.AUDCLNT_SHAREMODE_SHARED
-        #             resample   | remix      | better-SRC | nopersist
-        streamflags = 0x00100000 | 0x80000000 | 0x08000000 | 0x00080000
-        if isloopback:
-            streamflags |= 0x00020000 #loopback
+            #              resample   | remix      | better-SRC
+            #              rateadjust | autoconvPCM| SRC default quality
+            streamflags |= 0x00100000 | 0x80000000 | 0x08000000 # these flags are only relevant/permitted for shared mode
+            periodicity = 0 # always 0 for shared mode
+            if isloopback:
+                streamflags |= 0x00020000 #loopback, onlly allowed for shared mode
+
         bufferduration = int(blocksize/samplerate * 10000000) # in hecto-nanoseconds (1000_000_0)
-        hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, 0, ppMixFormat[0], _ffi.NULL)
+
+        # IAudioClient::Initialize https://docs.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-initialize
+        hr = self._ptr[0][0].lpVtbl.Initialize(self._ptr[0], sharemode, streamflags, bufferduration, periodicity, ppMixFormat[0], _ffi.NULL)
         _com.check_error(hr)
         _ole32.CoTaskMemFree(ppMixFormat[0])
 
