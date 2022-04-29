@@ -772,7 +772,7 @@ class _Recorder(_AudioClient):
                 recorded_data.append(chunk)
                 recorded_frames += len(chunk)
             if recorded_frames > required_frames:
-                to_split = -(recorded_frames-required_frames)
+                to_split = -int(recorded_frames-required_frames)
                 recorded_data[-1], self._pending_chunk = numpy.split(recorded_data[-1], [to_split])
 
         data = numpy.reshape(numpy.concatenate(recorded_data), [-1, len(set(self.channelmap))])
