@@ -2,7 +2,6 @@
 
 import os
 import cffi
-import re
 import time
 import struct
 import collections

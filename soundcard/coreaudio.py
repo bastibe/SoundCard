@@ -3,7 +3,6 @@ import cffi
 import numpy
 import collections
 import time
-import re
 import math
 import threading
 import warnings

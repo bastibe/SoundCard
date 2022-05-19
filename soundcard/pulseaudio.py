@@ -2,7 +2,6 @@ import os
 import atexit
 import collections
 import time
-import re
 import threading
 import warnings
 import numpy
