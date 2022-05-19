@@ -8,6 +8,8 @@ import warnings
 import numpy
 import cffi
 
+from soundcard.utils import match_device
+
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'pulseaudio.py.h'), 'rt') as f:
@@ -302,8 +304,7 @@ def get_speaker(id):
     speaker : _Speaker
 
     """
-    speakers = _pulse.sink_list
-    return _Speaker(id=_match_soundcard(id, speakers)['id'])
+    return match_device(id, all_speakers())
 
 
 def all_microphones(include_loopback=False, exclude_monitors=True):
@@ -367,41 +368,7 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     -------
     microphone : _Microphone
     """
-
-    if not exclude_monitors:
-        warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
-        include_loopback = not exclude_monitors
-
-    microphones = _pulse.source_list
-    return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
-
-
-def _match_soundcard(id, soundcards, include_loopback=False):
-    """Find id in a list of soundcards.
-
-    id can be a pulseaudio id, a substring of the microphone name, or
-    a fuzzy-matched pattern for the microphone name.
-    """
-    if not include_loopback:
-        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
-                            if not 'monitor' in soundcard['id']}
-        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards
-                              if not 'monitor' in soundcard['id']}
-    else:
-        soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
-        soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
-    if id in soundcards_by_id:
-        return soundcards_by_id[id]
-    # try substring match:
-    for name, soundcard in soundcards_by_name.items():
-        if id in name:
-            return soundcard
-    # try fuzzy match:
-    pattern = '.*'.join(id)
-    for name, soundcard in soundcards_by_name.items():
-        if re.match(pattern, name):
-            return soundcard
-    raise IndexError('no soundcard with id {}'.format(id))
+    return match_device(id, all_microphones(include_loopback))
 
 
 def get_name():

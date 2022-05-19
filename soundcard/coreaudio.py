@@ -8,6 +8,8 @@ import math
 import threading
 import warnings
 
+from soundcard.utils import match_device
+
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
@@ -60,7 +62,7 @@ def get_speaker(id):
     fuzzy-matched pattern for the speaker name.
 
     """
-    return _match_device(id, all_speakers())
+    return match_device(id, all_speakers())
 
 
 def default_microphone():
@@ -79,30 +81,7 @@ def get_microphone(id, include_loopback=False):
     fuzzy-matched pattern for the microphone name.
 
     """
-    return _match_device(id, all_microphones(include_loopback))
-
-
-def _match_device(id, devices):
-    """Find id in a list of devices.
-
-    id can be a CoreAudio id, a substring of the device name, or a
-    fuzzy-matched pattern for the microphone name.
-
-    """
-    devices_by_id = {device.id: device for device in devices}
-    devices_by_name = {device.name: device for device in devices}
-    if id in devices_by_id:
-        return devices_by_id[id]
-    # try substring match:
-    for name, device in devices_by_name.items():
-        if id in name:
-            return device
-    # try fuzzy match:
-    pattern = '.*'.join(id)
-    for name, device in devices_by_name.items():
-        if re.match(pattern, name):
-            return device
-    raise IndexError('no device with id {}'.format(id))
+    return match_device(id, all_microphones(include_loopback))
 
 
 def get_name():
