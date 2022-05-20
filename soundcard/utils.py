@@ -18,19 +18,17 @@ def match_device(id, devices):
     for device_map in real_devices_by_name, loopback_devices_by_name:
         if id in device_map:
             return device_map[id]
+    # MacOS/coreaudio uses integer IDs where string operations of course
+    # make no sense.
+    if isinstance(id, int):
+        raise IndexError('no device with id {}'.format(id))
     # try substring match:
     for device_map in real_devices_by_name, loopback_devices_by_name:
         for name, device in device_map.items():
             if id in name:
                 return device
     # try fuzzy match:
-    id_parts = list(id)
-    # Escape symbols in the provided id that have a special meaning
-    # in regular expression to prevent syntax errors e.g. for
-    # unbalanced parentheses.
-    for special_re_char in r'.^$*+?{}\[]|()':
-        while special_re_char in id_parts:
-            id_parts[id_parts.index(special_re_char)] = '\\' + special_re_char
+    id_parts = [re.escape(c) for c in id]
     pattern = '.*'.join(id_parts)
     for device_map in real_devices_by_name, loopback_devices_by_name:
         for name, device in device_map.items():

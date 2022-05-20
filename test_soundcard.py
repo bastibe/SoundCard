@@ -175,30 +175,57 @@ class FakeMicrophone:
 
 
 fake_microphones = [
+    # Linux/Alsa name and ID pattern.
+    # [0]
     FakeMicrophone(
         'alsa_output.usb-PCM2702-00.analog-stereo.monitor',
         'Monitor of PCM2702 16-bit stereo audio DAC Analog Stereo',
         True),
+    # [1]
     FakeMicrophone(
         'alsa_output.pci-0000_00_1b.0.analog-stereo.monitor',
         'Monitor of Build-in Sound Device Analog Stereo',
         True),
+    # [2]
     FakeMicrophone(
         'alsa_input.pci-0000_00_1b.0.analog-stereo',
         'Build-in Sound Device Analog Stereo',
         False),
+    # [3]
     FakeMicrophone(
         'alsa_output.pci-0000_00_03.0.hdmi-stereo-extra1.monitor',
         'Monitor of Build-in Sound Device Digital Stereo (HDMI 2)',
         True),
+    # Two completely made-up examples where a monitor name is the substring
+    # of the anme of a real device.
+    # [4]
     FakeMicrophone(
         'alsa_input.bluetooth-stuff.monitor',
         'Name with regex pitfalls [).',
         True),
+    # [5]
     FakeMicrophone(
         'alsa_input.bluetooth-stuff',
         'Name with regex pitfalls [). Longer than than the lookback name.',
         False),
+
+    # MacOS/coreaudio ID and name patterns.
+    # [6]
+    FakeMicrophone(42, 'Built-in Microphone', False),
+    # [7]
+    FakeMicrophone(59, 'Samson GoMic', False),
+
+    # Windows/mediafoundazion ID and name patterns.
+    # [8]
+    FakeMicrophone(
+        '{0.0.1.00000000}.{c0c95239-3a6c-427b-a788-9caeb13a7f43}',
+        'Mikrofonarray (Realtek(R) Audio) False',
+        False),
+    # [9]
+    FakeMicrophone(
+        '{0.0.0.00000000}.{f08702cd-ee32-4c95-ac85-ff21a9d4d8ec}',
+        'Lautsprecher (Realtek(R) Audio) True',
+        True),
     ]
 
 @pytest.fixture
@@ -213,14 +240,34 @@ def mock_all_microphones(monkeypatch):
 
 def test_get_microphone(mock_all_microphones):
     # Internal IDs can be specified.
+    # Linux ID.
     mic = soundcard.get_microphone('alsa_input.pci-0000_00_1b.0.analog-stereo')
     assert mic == fake_microphones[2]
+    # Windows ID.
+    mic = soundcard.get_microphone(
+        '{0.0.1.00000000}.{c0c95239-3a6c-427b-a788-9caeb13a7f43}')
+    assert mic == fake_microphones[8]
+    # Mac ID.
+    mic = soundcard.get_microphone(42)
+    assert mic == fake_microphones[6]
+
     # No fuzzy matching for IDs.
+    # Non-existing Linux ID.
     with pytest.raises(IndexError) as exc_info:
         soundcard.get_microphone('alsa_input.pci-0000_00_1b.0')
     assert (
         exc_info.exconly() ==
         'IndexError: no device with id alsa_input.pci-0000_00_1b.0')
+    # Non-existing Windows ID.
+    with pytest.raises(IndexError) as exc_info:
+        soundcard.get_microphone('0.0.1.00000000}.{c0c95239-3a6c-427b-')
+    assert (
+        exc_info.exconly() ==
+        'IndexError: no device with id 0.0.1.00000000}.{c0c95239-3a6c-427b-')
+    # Non-existing Mac ID.
+    with pytest.raises(IndexError) as exc_info:
+        mic = soundcard.get_microphone(13)
+    assert exc_info.exconly() == 'IndexError: no device with id 13'
 
     # The name of a microphone can be specified.
     mic = soundcard.get_microphone('Build-in Sound Device Analog Stereo')
@@ -233,7 +280,6 @@ def test_get_microphone(mock_all_microphones):
     mic = soundcard.get_microphone('Name with regex pitfalls')
     assert mic == fake_microphones[5]
 
-
     # A substring of a device name can be specified. If the parameter passed
     # to get_microphone() is a substring of more than one microphone name,
     # real microphones are preferably returned.
@@ -245,7 +291,7 @@ def test_get_microphone(mock_all_microphones):
     mic = soundcard.get_microphone('Snd Dev Analog')
     assert mic == fake_microphones[2]
 
-    # "Fuzzy matching" uses a regular expression; symbols with a specail
+    # "Fuzzy matching" uses a regular expression; symbols with a special
     # meaning in regexes are escaped.
     mic = soundcard.get_microphone('regex pitfall [')
     assert mic == fake_microphones[5]
@@ -258,18 +304,37 @@ class FakeSpeaker:
 
 
 fake_speakers = [
+    # Linux/Alsa name and ID pattern.
+    # [0]
     FakeSpeaker(
         'alsa_output.usb-PCM2702-00.analog-stereo',
         'PCM2702 16-bit stereo audio DAC Analog Stereo'),
+    # [1]
     FakeSpeaker(
         'alsa_output.pci-0000_00_1b.0.analog-stereo',
         'Build-in Sound Device Analog Stereo'),
+    # [2]
     FakeSpeaker(
         'alsa_output.pci-0000_00_03.0.hdmi-stereo-extra1',
         'Build-in Sound Device Digital Stereo (HDMI 2)'),
+    # [3]
     FakeSpeaker(
         'alsa_output.wire_fire_thingy',
         r'A nonsensical name \[a-z]{3}'),
+    # Windows/mediafoundazion ID and name patterns.
+    # [4]
+    FakeSpeaker(
+        '{0.0.0.00000000}.{075a16c1-576e-419e-84c1-70d03e0d6276}',
+        'BenQ PD2700U (Intel(R) Display-Audio)'),
+    # [5]
+    FakeSpeaker(
+        '{0.0.0.00000000}.{27473622-d168-4a9c-87c5-230c148c09c9}',
+        'Lautsprecher (4- Samson GoMic)'),
+    # MacOS/coreaudio ID and name patterns.
+    # [6]
+    FakeSpeaker(49, 'Built-in Output'),
+    # [7]
+    FakeSpeaker(59, 'Samson GoMic'),
     ]
 
 @pytest.fixture
@@ -283,14 +348,33 @@ def mock_all_speakers(monkeypatch):
 
 def test_get_speaker(mock_all_speakers):
     # Internal IDs can be specified.
+    # Linux
     spk = soundcard.get_speaker('alsa_output.pci-0000_00_1b.0.analog-stereo')
     assert spk == fake_speakers[1]
+    # Windows.
+    spk = soundcard.get_speaker(
+        '{0.0.0.00000000}.{075a16c1-576e-419e-84c1-70d03e0d6276}')
+    assert spk == fake_speakers[4]
+    # MacOS.
+    spk = soundcard.get_speaker(49)
+    assert spk == fake_speakers[6]
+
     # No fuzzy matching for IDs.
     with pytest.raises(IndexError) as exc_info:
         soundcard.get_speaker('alsa_output.pci-0000_00_1b.0')
     assert (
         exc_info.exconly() ==
         'IndexError: no device with id alsa_output.pci-0000_00_1b.0')
+    with pytest.raises(IndexError) as exc_info:
+        soundcard.get_speaker('{0.0.0.00000000')
+    assert (
+        exc_info.exconly() ==
+        'IndexError: no device with id {0.0.0.00000000')
+    with pytest.raises(IndexError) as exc_info:
+        soundcard.get_speaker(-15)
+    assert (
+        exc_info.exconly() ==
+        'IndexError: no device with id -15')
 
     # The name of a speaker can be specified.
     spk = soundcard.get_speaker('Build-in Sound Device Analog Stereo')
