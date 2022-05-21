@@ -173,6 +173,9 @@ Known Issues:
   only supports variable block sizes in exclusive mode.
 * Error messages often report some internal CFFI/backend errors. This will be
   improved in the future.
+* macOS Records silence happens when you run your script with an app that doesn't
+  ask for microphone permission to solve it, go to settings and give microphone
+  permission to the app you are running the script.
 
 Changelog
 ---------
