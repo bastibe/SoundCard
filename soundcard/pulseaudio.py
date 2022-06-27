@@ -683,7 +683,7 @@ class _Stream:
         if isinstance(self, _Player): # only playback streams need to drain
             _pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
         _pulse._pa_stream_disconnect(self.stream)
-        while _pulse._pa_stream_get_state(self.stream) != _pa.PA_STREAM_TERMINATED:
+        while _pulse._pa_stream_get_state(self.stream) not in (_pa.PA_STREAM_TERMINATED, _pa.PA_STREAM_FAILED):
             time.sleep(0.01)
         _pulse._pa_stream_unref(self.stream)
 
@@ -793,7 +793,9 @@ class _Recorder(_Stream):
         nbytes_ptr = _ffi.new('size_t*')
         readable_bytes = _pulse._pa_stream_readable_size(self.stream)
         while not readable_bytes:
-            self._record_event.wait()
+            if not self._record_event.wait(timeout=1):
+                if _pulse._pa_stream_get_state(self.stream) == _pa.PA_STREAM_FAILED:
+                    raise RuntimeError('Recording failed, stream is in status FAILED')
             self._record_event.clear()
             readable_bytes = _pulse._pa_stream_readable_size(self.stream)
         data_ptr[0] = _ffi.NULL
