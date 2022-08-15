@@ -290,7 +290,8 @@ class _CoreAudio:
     def CFString_to_str(cfstrptr):
         """Converts a CFStringRef to a Python str."""
 
-        str_length = _ca.CFStringGetLength(cfstrptr[0])
+        # Multiply by 4, the maximum number of bytes used per character in UTF-8.
+        str_length = _ca.CFStringGetLength(cfstrptr[0]) * 4
         str_buffer = _ffi.new('char[]', str_length+1)
 
         err = _ca.CFStringGetCString(cfstrptr[0], str_buffer, str_length+1, _cac.kCFStringEncodingUTF8)
