@@ -171,6 +171,8 @@ Known Issues:
   though.
 * Windows/WASAPI silently ignores the blocksize in some cases. Apparently, it
   only supports variable block sizes in exclusive mode.
+* Windows/WASAPI may underrun its buffers even if blocksize and nframes are
+  matched. Use a larger blocksize than nframes if this happens.
 * Error messages often report some internal CFFI/backend errors. This will be
   improved in the future.
 * macOS Records silence happens when you run your script with an app that doesn't

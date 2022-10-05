@@ -234,6 +234,12 @@ struct IAudioRenderClient {
     const struct IAudioRenderClientVtbl *lpVtbl;
 };
 
+typedef enum _AUDCLNT_BUFFERFLAGS {
+  AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x1,
+  AUDCLNT_BUFFERFLAGS_SILENT = 0x2,
+  AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR = 0x4
+};
+
 typedef struct IAudioCaptureClient IAudioCaptureClient;
 
 typedef struct IAudioCaptureClientVtbl {

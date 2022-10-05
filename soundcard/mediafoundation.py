@@ -7,6 +7,7 @@ import time
 import struct
 import collections
 import platform
+import warnings
 
 import numpy
 
@@ -16,6 +17,14 @@ with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
 _ole32 = _ffi.dlopen('ole32')
+
+
+# use a custom warning subclass that is always shown, instead of once:
+class SoundcardRuntimeWarning(RuntimeWarning):
+    pass
+
+warnings.simplefilter('always', SoundcardRuntimeWarning)
+
 
 class _COMLibrary:
     """General functionality of the COM library.
@@ -700,6 +709,7 @@ class _Recorder(_AudioClient):
         hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
         _com.check_error(hr)
         self._pending_chunk = numpy.zeros([0])
+        self._is_first_frame = True
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -729,6 +739,17 @@ class _Recorder(_AudioClient):
             chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
         else:
             raise RuntimeError('Could not create capture buffer')
+        if flags & _ole32.AUDCLNT_BUFFERFLAGS_SILENT:
+            # see https://learn.microsoft.com/en-us/windows/win32/api/audioclient/ne-audioclient-_audclnt_bufferflags
+            chunk[:] = 0
+        if self._is_first_frame:
+            # on first run, clear data discontinuity error, as it will always be set:
+            flags &= ~_ole32.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY
+            self._is_first_frame = False
+        if flags & _ole32.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:
+            warnings.warn("data discontinuity in recording", SoundcardRuntimeWarning)
+        # ignore _ole32.AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR, since we don't use
+        # time stamps.
         if nframes > 0:
             self._capture_release(nframes)
             return chunk
