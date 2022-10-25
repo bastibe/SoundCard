@@ -10,10 +10,13 @@ CPython extension. Instead, it is implemented using the wonderful `CFFI
 <http://cffi.readthedocs.io/en/latest/>`__ and the native audio libraries of
 Linux, Windows and macOS.
 
+The input and output data are scaled to 0dBFS (Full Scale). To avoid clipping  
+restrict all data between -1 and 1.
+
 SoundCard is cross-platform, and supports Linux/pulseaudio, Mac/coreaudio, and
 Windows/WASAPI. While the programming interface is identical across platforms,
 sound card naming schemes and default block sizes can vary between devices and
-platforms.
+platforms. 
 
 SoundCard is still in development. All major features work on all platforms, but
 there are a few known issues that still need to be fixed. If you find a bug,
@@ -86,7 +89,8 @@ are *frames × channels* Numpy arrays.
 
     # record and play back one second of audio:
     data = default_mic.record(samplerate=48000, numframes=48000)
-    default_speaker.play(data/numpy.max(data), samplerate=48000)
+    # normalized playback
+    default_speaker.play(data/numpy.max(numpy-abs(data)), samplerate=48000)
 
     # alternatively, get a `Recorder` and `Player` object
     # and play or record continuously:
