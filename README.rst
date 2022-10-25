@@ -90,7 +90,7 @@ are *frames × channels* Numpy arrays.
     # record and play back one second of audio:
     data = default_mic.record(samplerate=48000, numframes=48000)
     # normalized playback
-    default_speaker.play(data/numpy.max(numpy-abs(data)), samplerate=48000)
+    default_speaker.play(data/numpy.max(numpy.abs(data)), samplerate=48000)
 
     # alternatively, get a `Recorder` and `Player` object
     # and play or record continuously:
