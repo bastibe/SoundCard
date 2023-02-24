@@ -551,6 +551,12 @@ class _AudioClient:
         _com.check_error(hr)
         _ole32.CoTaskMemFree(ppMixFormat[0])
 
+        # save samplerate for later
+        self.samplerate = samplerate
+        # placeholder for the last time we had audio input available
+        self._idle_start_time = None
+
+
     @property
     def buffersize(self):
         pBufferSize = _ffi.new("UINT32*")
@@ -564,7 +570,7 @@ class _AudioClient:
         pMinimumPeriod = _ffi.new("REFERENCE_TIME*")
         hr = self._ptr[0][0].lpVtbl.GetDevicePeriod(self._ptr[0], pDefaultPeriod, pMinimumPeriod)
         _com.check_error(hr)
-        return pDefaultPeriod[0]/10000000, pMinimumPeriod[0]/10000000 # (1000_000_0)
+        return pDefaultPeriod[0]/10_000_000, pMinimumPeriod[0]/10_000_000
 
     @property
     def currentpadding(self):
@@ -727,13 +733,29 @@ class _Recorder(_AudioClient):
 
         """
 
-        empty_frames = 0
-        while not self._capture_available_frames():
-            empty_frames += 1
-            if empty_frames > 10:
-                # no data for 10 ms: give up.
-                return numpy.zeros([0], dtype='float32')
-            time.sleep(0.001)
+        while self._capture_available_frames() == 0:
+            # some sound cards indicate silence by not making any
+            # frames available. If that is the case, we need to
+            # estimate the number of zeros to return, by measuring the
+            # silent time:
+            if self._idle_start_time is None:
+                self._idle_start_time = time.perf_counter_ns()
+
+            default_block_length, minimum_block_length = self.deviceperiod
+            time.sleep(minimum_block_length/4)
+            elapsed_time_ns = time.perf_counter_ns() - self._idle_start_time
+            # waiting times shorter than a block length or so are
+            # normal, and not indicative of a silent sound card. If
+            # the waiting times get longer however, we must assume
+            # that there is no audio data forthcoming, and return
+            # zeros instead:
+            if elapsed_time_ns / 1_000_000_000 > default_block_length * 4:
+                num_frames = int(self.samplerate * elapsed_time_ns / 1_000_000_000)
+                num_channels = len(set(self.channelmap))
+                self._idle_start_time += elapsed_time_ns
+                return numpy.zeros([num_frames * num_channels], dtype='float32')
+
+        self._idle_start_time = None
         data_ptr, nframes, flags = self._capture_buffer()
         if data_ptr != _ffi.NULL:
             chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
