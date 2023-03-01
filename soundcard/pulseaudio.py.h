@@ -111,6 +111,8 @@ typedef enum pa_channel_map_def {
 
 pa_channel_map* pa_channel_map_init_extend(pa_channel_map *m, unsigned channels, pa_channel_map_def_t def);
 int pa_channel_map_valid(const pa_channel_map *map);
+const char* pa_channel_position_to_string(pa_channel_position_t pos);
+pa_channel_position_t pa_channel_position_from_string(const char *s);
 
 typedef struct pa_buffer_attr {
     uint32_t maxlength;
