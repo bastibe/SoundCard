@@ -47,40 +47,21 @@ def _lock_and_block(func):
     return func_with_lock
 
 
-_channel_positions = {
-                         'left': _pa.PA_CHANNEL_POSITION_LEFT,
-                         'right': _pa.PA_CHANNEL_POSITION_RIGHT,
-                         'center': _pa.PA_CHANNEL_POSITION_CENTER,
-                         'subwoofer': _pa.PA_CHANNEL_POSITION_SUBWOOFER} | \
-                     {
-                         _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
-                         range(_pa.PA_CHANNEL_POSITION_MAX)
-                     }
-
-
-def get_channel_positions():
+def channel_name_map():
     """
-    Return a dict containing the Pulseaudio channel position enum type index
-    for every channel position name string.
+    Return a dict containing the channel position index for every channel position name string.
     """
-    return _channel_positions
 
-
-def channel_position_to_string(channel):
-    """
-    Return the Pulseaudio channel position name string for enum type index channel.
-    """
-    return _ffi.string(_pa.pa_channel_position_to_string(channel)).decode('utf-8')
-
-
-def channel_string_to_position(channel_string):
-    """
-    Return the Pulseaudio channel position enum type index for position name channel_string.
-    """
-    channel = _pa.pa_channel_position_from_string(_ffi.new("char[]", channel_string.encode()))
-    if channel == -1:
-        raise KeyError(channel_string + " is not a valid channel position name.")
-    return channel
+    channel_indices = {
+                          'left': _pa.PA_CHANNEL_POSITION_LEFT,
+                          'right': _pa.PA_CHANNEL_POSITION_RIGHT,
+                          'center': _pa.PA_CHANNEL_POSITION_CENTER,
+                          'subwoofer': _pa.PA_CHANNEL_POSITION_SUBWOOFER} | \
+                      {
+                          _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
+                          range(_pa.PA_CHANNEL_POSITION_MAX)
+                      }
+    return channel_indices
 
 
 class _PulseAudio:
@@ -694,7 +675,8 @@ class _Stream:
                 if isinstance(ch, int):
                     channelmap.map[idx] = ch
                 else:
-                    channelmap.map[idx] = channel_string_to_position(ch)
+                    channel_name_to_index = channel_name_map()
+                    channelmap.map[idx] = channel_name_to_index[ch]
 
         if not _pa.pa_channel_map_valid(channelmap):
             raise RuntimeError('invalid channel map')
