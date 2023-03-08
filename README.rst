@@ -151,11 +151,13 @@ in the the channel map list indicates the channel index in the numpy data array
 used in SoundCard:
 
 .. code:: python
+
     # record one second of audio from backend channels 0 to 3:
     data = default_mic.record(samplerate=48000, channels=[0, 1, 2, 3], numframes=48000)
 
     # play back the recorded audio in reverse channel order:
     default_speaker.play(data=data, channels=[3, 2, 1, 0], samplerate=48000)
+
 
 The meaning of the channel specifiers depend on the backend in use. For WASAPI
 (Windows) and CoreAudio (macOS) the indices refer to the physical output
@@ -167,7 +169,7 @@ The channel position identifiers in the PulseAudio backend are based on:
 https://freedesktop.org/software/pulseaudio/doxygen/channelmap_8h.html
 Since the mapping of position indices to audio channels is not obvious, a
 dictionary containing all possible positions and channel indices can be
-retrieved by calling ``channel_name_map()``. The positions for the indices up to 10 are ::
+retrieved by calling ``channel_name_map()``. The positions for the indices up to 10 are: ::
     'mono': -1,
     'left': 0,
     'right': 1,
@@ -184,9 +186,10 @@ retrieved by calling ``channel_name_map()``. The positions for the indices up to
 The identifier ``mono`` or the index ``-1`` can be used for mono mix of all
 channels for both playback and recording. (CoreAudio/macOS defines channel ``-1``
 as silence for both playback and recording.) In addition to the indices, the PulseAudio
-backend allows the use of the name strings to define a channel map ::
+backend allows the use of the name strings to define a channel map:
 
 .. code:: python
+
     # This example plays one second of noise on each channel defined in the channel map consecutively.
     # The channel definition scheme using strings only works with the PulseAudio backend!
 
