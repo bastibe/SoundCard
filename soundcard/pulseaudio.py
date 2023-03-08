@@ -776,7 +776,8 @@ class _Player(_Stream):
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         while data.nbytes > 0:
-            nwrite = _pulse._pa_stream_writable_size(self.stream) // 4
+            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels) # 4 bytes per sample
+
             if nwrite == 0:
                 time.sleep(0.001)
                 continue
