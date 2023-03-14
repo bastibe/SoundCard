@@ -209,6 +209,33 @@ backend allows the use of the name strings to define a channel map:
     # Playback using the 7.1 channel map.
     default_speaker.play(data=data, channels=channel_map, samplerate=samplerate)
 
+The available channels of each PulseAudio source or sink can be listed by ::
+
+    > pactl list sinks
+    > pactl list sources
+
+
+The ``Channel Map`` property lists the channel identifier of the source/sink. ::
+
+    > pactl list sinks | grep  "Channel Map" -B 6
+    
+    Sink #486
+        State: SUSPENDED
+        Name: alsa_output.usb-C-Media_Electronics_Inc._USB_Advanced_Audio_Device-00.analog-stereo
+        Description: USB Advanced Audio Device Analog Stereo
+        Driver: PipeWire
+        Sample Specification: s24le 2ch 48000Hz
+        Channel Map: front-left,front-right
+    --
+    Sink #488
+            State: RUNNING
+            Name: alsa_output.pci-0000_2f_00.4.analog-surround-71
+            Description: Starship/Matisse HD Audio Controller Analog Surround 7.1
+            Driver: PipeWire
+            Sample Specification: s32le 8ch 48000Hz
+            Channel Map: front-left,front-right,rear-left,rear-right,front-center,lfe,side-left,side-right
+
+
 FAQ
 ---
 Q: How to make it work on a headless Raspberry Pi?
