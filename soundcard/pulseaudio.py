@@ -53,16 +53,18 @@ def channel_name_map():
     """
 
     channel_indices = {
-                          'left': _pa.PA_CHANNEL_POSITION_LEFT,
-                          'right': _pa.PA_CHANNEL_POSITION_RIGHT,
-                          'center': _pa.PA_CHANNEL_POSITION_CENTER,
-                          'subwoofer': _pa.PA_CHANNEL_POSITION_SUBWOOFER} | \
-                      {
-                          _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
-                          range(_pa.PA_CHANNEL_POSITION_MAX)
-                      }
+        _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
+        range(_pa.PA_CHANNEL_POSITION_MAX)
+    }
 
-    # The above values returned from Pulseaudio contain 1 for 'left', 2 for 'right' and so on.
+    # Append alternative names for front-left, front-right, front-center and lfe according to
+    # the PulseAudio definitions.
+    channel_indices.update({'left': _pa.PA_CHANNEL_POSITION_LEFT,
+                            'right': _pa.PA_CHANNEL_POSITION_RIGHT,
+                            'center': _pa.PA_CHANNEL_POSITION_CENTER,
+                            'subwoofer': _pa.PA_CHANNEL_POSITION_SUBWOOFER})
+
+    # The values returned from Pulseaudio contain 1 for 'left', 2 for 'right' and so on.
     # SoundCard's channel indices for 'left' start at 0. Therefore, we have to decrement all values.
     channel_indices = {key: value - 1 for (key, value) in channel_indices.items()}
 
