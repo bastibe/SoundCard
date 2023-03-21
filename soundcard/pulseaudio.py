@@ -501,7 +501,7 @@ class _Speaker(_SoundCard):
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    def player(self, samplerate, channels=None, blocksize=None):
+    def player(self, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Create Player for playing audio.
 
         Parameters
@@ -517,10 +517,9 @@ class _Speaker(_SoundCard):
         blocksize : int
             Will play this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
-        exclusive_mode : bool, optional
-            Windows only: open sound card in exclusive mode, which
-            might be necessary for short block lengths or high
-            sample rates or optimal performance. Default is ``False``.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur when
+            processing cannot keep up.
 
         Returns
         -------
@@ -528,9 +527,9 @@ class _Speaker(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        return _Player(self._id, samplerate, channels, blocksize)
+        return _Player(self._id, samplerate, channels, blocksize, maxlatency)
 
-    def play(self, data, samplerate, channels=None, blocksize=None):
+    def play(self, data, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Play some audio data.
 
         Parameters
@@ -548,10 +547,13 @@ class _Speaker(_SoundCard):
         blocksize : int
             Will play this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
+            when the processing cannot keep up.
         """
         if channels is None:
             channels = self.channels
-        with _Player(self._id, samplerate, channels, blocksize) as s:
+        with _Player(self._id, samplerate, channels, blocksize, maxlatency) as s:
             s.play(data)
 
     def _get_info(self):
@@ -582,7 +584,7 @@ class _Microphone(_SoundCard):
         """bool : Whether this microphone is recording a speaker."""
         return self._get_info()['device.class'] == 'monitor'
 
-    def recorder(self, samplerate, channels=None, blocksize=None):
+    def recorder(self, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Create Recorder for recording audio.
 
         Parameters
@@ -598,6 +600,9 @@ class _Microphone(_SoundCard):
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
+            when the processing cannot keep up.
         exclusive_mode : bool, optional
             Windows only: open sound card in exclusive mode, which
             might be necessary for short block lengths or high
@@ -609,9 +614,9 @@ class _Microphone(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        return _Recorder(self._id, samplerate, channels, blocksize)
+        return _Recorder(self._id, samplerate, channels, blocksize, maxlatency)
 
-    def record(self, numframes, samplerate, channels=None, blocksize=None):
+    def record(self, numframes, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Record some audio data.
 
         Parameters
@@ -629,6 +634,10 @@ class _Microphone(_SoundCard):
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
+            when the processing cannot keep up.
+
 
         Returns
         -------
@@ -637,7 +646,7 @@ class _Microphone(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        with _Recorder(self._id, samplerate, channels, blocksize) as r:
+        with _Recorder(self._id, samplerate, channels, blocksize, maxlatency) as r:
             return r.record(numframes)
 
 
@@ -653,12 +662,14 @@ class _Stream:
 
     """
 
-    def __init__(self, id, samplerate, channels, blocksize=None, name='outputstream'):
+    def __init__(self, id, samplerate, channels, blocksize=None, maxlatency=None,
+                 name='outputstream'):
         self._id = id
         self._samplerate = samplerate
         self._name = name
         self._blocksize = blocksize
         self.channels = channels
+        self._maxlatency = maxlatency
 
     def __enter__(self):
         samplespec = _ffi.new("pa_sample_spec*")
@@ -693,12 +704,14 @@ class _Stream:
             errno = _pulse._pa_context_errno(_pulse.context)
             raise RuntimeError("stream creation failed with error ", errno)
         bufattr = _ffi.new("pa_buffer_attr*")
-        bufattr.maxlength = 2**32-1 # max buffer length
-        numchannels = self.channels if isinstance(self.channels, int) else len(self.channels)
-        bufattr.fragsize = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # recording block sys.getsizeof()
-        bufattr.minreq = 2**32-1 # start requesting more data at this bytes
-        bufattr.prebuf = 2**32-1 # start playback after this bytes are available
-        bufattr.tlength = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
+        numchannels = samplespec.channels
+        bytes_per_sample = 4  # for _pa.PA_SAMPLE_FLOAT32LE
+        bufattr.maxlength = self._maxlatency * numchannels * bytes_per_sample if self._maxlatency else 2 ** 32 - 1
+        bufattr.fragsize = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1
+        bufattr.minreq = 2 ** 32 - 1  # start requesting more data at this bytes
+        bufattr.prebuf = 2 ** 32 - 1  # start playback after prebuf bytes are available
+        bufattr.tlength = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1  # buffer length in bytes on server
+
         self._connect_stream(bufattr)
         while _pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
