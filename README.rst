@@ -145,14 +145,96 @@ Channel Maps
 
 Some professional sound cards have large numbers of channels. If you want to
 record or play only a subset of those channels, you can specify a channel map.
-For playback, a channel map of ``[0, 3, 4]`` will play three-channel audio data
-on the physical channels one, four, and five. For recording, a channel map of
-``[0, 3, 4]`` will return three-channel audio data recorded from the physical
-channels one, four, and five.
+A channel map consists of a list of channel specifiers, which refer to the
+channels of the audio backend in use. The index of each of those specifiers
+in the the channel map list indicates the channel index in the numpy data array
+used in SoundCard:
 
-In addition, pulseaudio/Linux defines channel ``-1`` as the mono mix of all
-channels for both playback and recording. CoreAudio/macOS defines channel ``-1``
-as silence for both playback and recording.
+.. code:: python
+
+    # record one second of audio from backend channels 0 to 3:
+    data = default_mic.record(samplerate=48000, channels=[0, 1, 2, 3], numframes=48000)
+
+    # play back the recorded audio in reverse channel order:
+    default_speaker.play(data=data, channels=[3, 2, 1, 0], samplerate=48000)
+
+
+The meaning of the channel specifiers depend on the backend in use. For WASAPI
+(Windows) and CoreAudio (macOS) the indices refer to the physical output
+channels of the sound device in use. For the PulseAudio backend (Linux) the
+specifiers refer to logical channel positions instead of physical hardware
+channels.
+
+The channel position identifiers in the PulseAudio backend are based on:
+https://freedesktop.org/software/pulseaudio/doxygen/channelmap_8h.html
+Since the mapping of position indices to audio channels is not obvious, a
+dictionary containing all possible positions and channel indices can be
+retrieved by calling ``channel_name_map()``. The positions for the indices up to 10 are: ::
+    'mono': -1,
+    'left': 0,
+    'right': 1,
+    'center': 2,
+    'rear-center': 3,
+    'rear-left': 4,
+    'rear-right': 5,
+    'lfe': 6,
+    'front-left-of-center': 7,
+    'front-right-of-center': 8,
+    'side-left': 9,
+    'side-right': 10
+
+The identifier ``mono`` or the index ``-1`` can be used for mono mix of all
+channels for both playback and recording. (CoreAudio/macOS defines channel ``-1``
+as silence for both playback and recording.) In addition to the indices, the PulseAudio
+backend allows the use of the name strings to define a channel map:
+
+.. code:: python
+
+    # This example plays one second of noise on each channel defined in the channel map consecutively.
+    # The channel definition scheme using strings only works with the PulseAudio backend!
+
+    # This defines a channel map for a 7.1 audio sink device
+    channel_map = ['left', 'right', 'center', 'lfe', 'rear-left', 'rear-right', 'side-left', 'side-right']
+
+    num_channels = len(channel_map)
+    samplerate = 48000
+
+    # Create the multi channel noise array.
+    noise_samples = 48000
+    noise = numpy.random.uniform(-0.1, 0.1, noise_samples)
+    data = numpy.zeros((num_channels * noise_samples, num_channels), dtype=numpy.float32)
+    for channel in range(num_channels):
+        data[channel * noise_samples:(channel + 1) * noise_samples, channel] = noise
+
+    # Playback using the 7.1 channel map.
+    default_speaker.play(data=data, channels=channel_map, samplerate=samplerate)
+
+The available channels of each PulseAudio source or sink can be listed by ::
+
+    > pactl list sinks
+    > pactl list sources
+
+
+The ``Channel Map`` property lists the channel identifier of the source/sink. ::
+
+    > pactl list sinks | grep  "Channel Map" -B 6
+    
+    Sink #486
+        State: SUSPENDED
+        Name: alsa_output.usb-C-Media_Electronics_Inc._USB_Advanced_Audio_Device-00.analog-stereo
+        Description: USB Advanced Audio Device Analog Stereo
+        Driver: PipeWire
+        Sample Specification: s24le 2ch 48000Hz
+        Channel Map: front-left,front-right
+    --
+    Sink #488
+            State: RUNNING
+            Name: alsa_output.pci-0000_2f_00.4.analog-surround-71
+            Description: Starship/Matisse HD Audio Controller Analog Surround 7.1
+            Driver: PipeWire
+            Sample Specification: s32le 8ch 48000Hz
+            Channel Map: front-left,front-right,rear-left,rear-right,front-center,lfe,side-left,side-right
+
 
 FAQ
 ---

@@ -46,6 +46,31 @@ def _lock_and_block(func):
         self._pa_operation_unref(operation)
     return func_with_lock
 
+
+def channel_name_map():
+    """
+    Return a dict containing the channel position index for every channel position name string.
+    """
+
+    channel_indices = {
+        _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
+        range(_pa.PA_CHANNEL_POSITION_MAX)
+    }
+
+    # Append alternative names for front-left, front-right, front-center and lfe according to
+    # the PulseAudio definitions.
+    channel_indices.update({'left': _pa.PA_CHANNEL_POSITION_LEFT,
+                            'right': _pa.PA_CHANNEL_POSITION_RIGHT,
+                            'center': _pa.PA_CHANNEL_POSITION_CENTER,
+                            'subwoofer': _pa.PA_CHANNEL_POSITION_SUBWOOFER})
+
+    # The values returned from Pulseaudio contain 1 for 'left', 2 for 'right' and so on.
+    # SoundCard's channel indices for 'left' start at 0. Therefore, we have to decrement all values.
+    channel_indices = {key: value - 1 for (key, value) in channel_indices.items()}
+
+    return channel_indices
+
+
 class _PulseAudio:
     """Proxy for communcation with Pulseaudio.
 
@@ -651,10 +676,15 @@ class _Stream:
         # pam and channelmap refer to the same object, but need different
         # names to avoid garbage collection trouble on the Python/C boundary
         pam = _ffi.new("pa_channel_map*")
-        channelmap = _pa.pa_channel_map_init_auto(pam, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
+        channelmap = _pa.pa_channel_map_init_extend(pam, samplespec.channels, _pa.PA_CHANNEL_MAP_DEFAULT)
         if isinstance(self.channels, collections.abc.Iterable):
             for idx, ch in enumerate(self.channels):
-                channelmap.map[idx] = ch+1
+                if isinstance(ch, int):
+                    channelmap.map[idx] = ch + 1
+                else:
+                    channel_name_to_index = channel_name_map()
+                    channelmap.map[idx] = channel_name_to_index[ch] + 1
+
         if not _pa.pa_channel_map_valid(channelmap):
             raise RuntimeError('invalid channel map')
 
@@ -748,7 +778,8 @@ class _Player(_Stream):
         if data.shape[1] != self.channels:
             raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         while data.nbytes > 0:
-            nwrite = _pulse._pa_stream_writable_size(self.stream) // 4
+            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels) # 4 bytes per sample
+
             if nwrite == 0:
                 time.sleep(0.001)
                 continue
