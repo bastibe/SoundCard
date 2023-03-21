@@ -18,7 +18,7 @@ try:
 except OSError:
     # Try explicit file name, if the general does not work (e.g. on nixos)
     _pa = _ffi.dlopen('libpulse.so')
-    
+
 # First, we need to define a global _PulseAudio proxy for interacting
 # with the C API:
 
@@ -286,6 +286,10 @@ class _PulseAudio:
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
     _pa_stream_set_read_callback = _pa.pa_stream_set_read_callback
+    _pa_stream_set_overflow_callback = _pa.pa_stream_set_overflow_callback
+    _pa_stream_set_underflow_callback = _pa.pa_stream_set_underflow_callback
+    _pa_stream_get_underflow_index = _pa.pa_stream_get_underflow_index
+
 
 _pulse = _PulseAudio()
 atexit.register(_pulse._shutdown)
@@ -501,7 +505,7 @@ class _Speaker(_SoundCard):
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    def player(self, samplerate, channels=None, blocksize=None, maxlatency=None):
+    def player(self, samplerate, channels=None, blocksize=None, maxlatency=None, report_under_overflow=False):
         """Create Player for playing audio.
 
         Parameters
@@ -520,6 +524,8 @@ class _Speaker(_SoundCard):
         maxlatency : int
             Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur when
             processing cannot keep up.
+        report_under_overflow : bool, optional
+            Linux only: print debug information to terminal, whenever buffer underflows or overflows occur.
 
         Returns
         -------
@@ -527,9 +533,9 @@ class _Speaker(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        return _Player(self._id, samplerate, channels, blocksize, maxlatency)
+        return _Player(self._id, samplerate, channels, blocksize, maxlatency, report_under_overflow)
 
-    def play(self, data, samplerate, channels=None, blocksize=None, maxlatency=None):
+    def play(self, data, samplerate, channels=None, blocksize=None, maxlatency=None, report_under_overflow=False):
         """Play some audio data.
 
         Parameters
@@ -550,10 +556,12 @@ class _Speaker(_SoundCard):
         maxlatency : int
             Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
             when the processing cannot keep up.
+        report_under_overflow : bool, optional
+            Linux only: print debug information to terminal, whenever buffer underflows or overflows occur.
         """
         if channels is None:
             channels = self.channels
-        with _Player(self._id, samplerate, channels, blocksize, maxlatency) as s:
+        with _Player(self._id, samplerate, channels, blocksize, maxlatency, report_under_overflow) as s:
             s.play(data)
 
     def _get_info(self):
@@ -662,7 +670,7 @@ class _Stream:
 
     """
 
-    def __init__(self, id, samplerate, channels, blocksize=None, maxlatency=None,
+    def __init__(self, id, samplerate, channels, blocksize=None, maxlatency=None, report_under_overflow=False,
                  name='outputstream'):
         self._id = id
         self._samplerate = samplerate
@@ -670,6 +678,7 @@ class _Stream:
         self._blocksize = blocksize
         self.channels = channels
         self._maxlatency = maxlatency
+        self._report_under_overflow = report_under_overflow
 
     def __enter__(self):
         samplespec = _ffi.new("pa_sample_spec*")
@@ -753,8 +762,24 @@ class _Player(_Stream):
     """
 
     def _connect_stream(self, bufattr):
+        if self._report_under_overflow:
+            @_ffi.callback("pa_stream_notify_cb_t")
+            def overflow_callback(stream, userdata):
+                print('Overflow detected.')
+
+            self._overflow_callback = overflow_callback
+            _pulse._pa_stream_set_overflow_callback(self.stream, overflow_callback, _ffi.NULL)
+
+            @_ffi.callback("pa_stream_notify_cb_t")
+            def underflow_callback(stream, userdata):
+                time_underflow = _pulse._pa_stream_get_underflow_index(stream)
+                print('Underflow detected at position ' + str(time_underflow))
+
+            self._underflow_callback = underflow_callback
+            _pulse._pa_stream_set_underflow_callback(self.stream, underflow_callback, _ffi.NULL)
+
         _pulse._pa_stream_connect_playback(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY,
-                                                _ffi.NULL, _ffi.NULL)
+                                           _ffi.NULL, _ffi.NULL)
 
     def play(self, data):
         """Play some audio data.
