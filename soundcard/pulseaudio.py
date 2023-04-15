@@ -19,6 +19,7 @@ except OSError:
     # Try explicit file name, if the general does not work (e.g. on nixos)
     _pa = _ffi.dlopen('libpulse.so')
 
+
 # First, we need to define a global _PulseAudio proxy for interacting
 # with the C API:
 
@@ -29,6 +30,7 @@ def _lock(func):
         self = args[0]
         with self._lock_mainloop():
             return func(*args[1:], **kwargs)
+
     return func_with_lock
 
 
@@ -38,12 +40,14 @@ def _lock_and_block(func):
 
     Use this for Pulseaudio functions that return a `pa_operation *`.
     """
+
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
             operation = func(*args[1:], **kwargs)
         self._block_operation(operation)
         self._pa_operation_unref(operation)
+
     return func_with_lock
 
 
@@ -51,7 +55,6 @@ def channel_name_map():
     """Return a dict containing the channel position index for every
     channel position name string.
     """
-
     channel_indices = {
         _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
         range(_pa.PA_CHANNEL_POSITION_MAX)
@@ -95,9 +98,11 @@ class _PulseAudio:
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
-        while self._pa_context_get_state(self.context) in (_pa.PA_CONTEXT_UNCONNECTED, _pa.PA_CONTEXT_CONNECTING, _pa.PA_CONTEXT_AUTHORIZING, _pa.PA_CONTEXT_SETTING_NAME):
+        while self._pa_context_get_state(self.context) in (
+                _pa.PA_CONTEXT_UNCONNECTED, _pa.PA_CONTEXT_CONNECTING,
+                _pa.PA_CONTEXT_AUTHORIZING, _pa.PA_CONTEXT_SETTING_NAME):
             time.sleep(0.001)
-        assert self._pa_context_get_state(self.context)==_pa.PA_CONTEXT_READY
+        assert self._pa_context_get_state(self.context) == _pa.PA_CONTEXT_READY
 
     @staticmethod
     def _infer_program_name():
@@ -144,11 +149,13 @@ class _PulseAudio:
         if idx < 0:  # PA_INVALID_INDEX == -1
             raise RuntimeError("Could not get client index of PulseAudio context.")
         name = None
+
         @_ffi.callback("pa_client_info_cb_t")
         def callback(context, client_info, eol, userdata):
             nonlocal name
             if not eol:
                 name = _ffi.string(client_info.name).decode('utf-8')
+
         self._pa_context_get_client_info(self.context, idx, callback, _ffi.NULL)
         assert name is not None
         return name
@@ -156,10 +163,12 @@ class _PulseAudio:
     @name.setter
     def name(self, name):
         rv = None
+
         @_ffi.callback("pa_context_success_cb_t")
         def callback(context, success, userdata):
             nonlocal rv
             rv = success
+
         self._pa_context_set_name(self.context, name.encode(), callback, _ffi.NULL)
         assert rv is not None
         if rv == 0:
@@ -169,17 +178,20 @@ class _PulseAudio:
     def source_list(self):
         """Return a list of dicts of information about available sources."""
         info = []
+
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
                 info.append(dict(name=_ffi.string(source_info.description).decode('utf-8'),
                                  id=_ffi.string(source_info.name).decode('utf-8')))
+
         self._pa_context_get_source_info_list(self.context, callback, _ffi.NULL)
         return info
 
     def source_info(self, id):
         """Return a dictionary of information about a specific source."""
         info = []
+
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
@@ -199,17 +211,21 @@ class _PulseAudio:
     def sink_list(self):
         """Return a list of dicts of information about available sinks."""
         info = []
+
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
                 info.append((dict(name=_ffi.string(sink_info.description).decode('utf-8'),
                                   id=_ffi.string(sink_info.name).decode('utf-8'))))
+
         self._pa_context_get_sink_info_list(self.context, callback, _ffi.NULL)
         return info
 
     def sink_info(self, id):
         """Return a dictionary of information about a specific sink."""
+
         info = []
+
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
@@ -221,19 +237,23 @@ class _PulseAudio:
                     data = _pa.pa_proplist_gets(sink_info.proplist, prop.encode())
                     info_dict[prop] = _ffi.string(data).decode('utf-8') if data else None
                 info.append(info_dict)
+
         self._pa_context_get_sink_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
     @property
     def server_info(self):
         """Return a dictionary of information about the server."""
+
         info = {}
+
         @_ffi.callback("pa_server_info_cb_t")
         def callback(context, server_info, userdata):
             info['server version'] = _ffi.string(server_info.server_version).decode('utf-8')
             info['server name'] = _ffi.string(server_info.server_name).decode('utf-8')
             info['default sink id'] = _ffi.string(server_info.default_sink_name).decode('utf-8')
             info['default source id'] = _ffi.string(server_info.default_source_name).decode('utf-8')
+
         self._pa_context_get_server_info(self.context, callback, _ffi.NULL)
         return info
 
@@ -247,8 +267,10 @@ class _PulseAudio:
         class Lock():
             def __enter__(self_):
                 _pa.pa_threaded_mainloop_lock(self.mainloop)
+
             def __exit__(self_, exc_type, exc_value, traceback):
                 _pa.pa_threaded_mainloop_unlock(self.mainloop)
+
         return Lock()
 
     # create thread-safe versions of all used Pulseaudio functions:
@@ -292,13 +314,13 @@ class _PulseAudio:
 _pulse = _PulseAudio()
 atexit.register(_pulse._shutdown)
 
+
 def all_speakers():
     """A list of all connected speakers.
 
     Returns
     -------
     speakers : list(_Speaker)
-
     """
     return [_Speaker(id=s['id']) for s in _pulse.sink_list]
 
@@ -309,7 +331,6 @@ def default_speaker():
     Returns
     -------
     speaker : _Speaker
-
     """
     name = _pulse.server_info['default sink id']
     return get_speaker(name)
@@ -328,7 +349,6 @@ def get_speaker(id):
     Returns
     -------
     speaker : _Speaker
-
     """
     speakers = _pulse.sink_list
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
@@ -350,9 +370,7 @@ def all_microphones(include_loopback=False, exclude_monitors=True):
     Returns
     -------
     microphones : list(_Microphone)
-
     """
-
     if not exclude_monitors:
         warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
         include_loopback = not exclude_monitors
@@ -396,7 +414,6 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     -------
     microphone : _Microphone
     """
-
     if not exclude_monitors:
         warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
         include_loopback = not exclude_monitors
@@ -671,7 +688,6 @@ class _Stream:
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
     def __init__(self, id, samplerate, channels, blocksize=None, maxlatency=None, report_under_overflow=False,
@@ -723,7 +739,9 @@ class _Stream:
         bufattr.fragsize = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1
         bufattr.minreq = 2 ** 32 - 1  # start requesting more data at this bytes
         bufattr.prebuf = 2 ** 32 - 1  # start playback after prebuf bytes are available
-        bufattr.tlength = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1  # buffer length in bytes on server
+
+        # buffer length in bytes on server
+        bufattr.tlength = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1
 
         self._connect_stream(bufattr)
         while _pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
@@ -736,7 +754,7 @@ class _Stream:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if isinstance(self, _Player): # only playback streams need to drain
+        if isinstance(self, _Player):  # only playback streams need to drain
             _pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
         _pulse._pa_stream_disconnect(self.stream)
         while _pulse._pa_stream_get_state(self.stream) not in (_pa.PA_STREAM_TERMINATED, _pa.PA_STREAM_FAILED):
@@ -749,7 +767,7 @@ class _Stream:
         _pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
         microseconds = _ffi.new("pa_usec_t*")
         _pulse._pa_stream_get_latency(self.stream, microseconds, _ffi.NULL)
-        return microseconds[0] / 1000000 # 1_000_000 (3.5 compat)
+        return microseconds[0] / 1000000  # 1_000_000 (3.5 compat)
 
 
 class _Player(_Stream):
@@ -811,15 +829,16 @@ class _Player(_Stream):
 
         data = numpy.array(data, dtype='float32', order='C')
         if data.ndim == 1:
-            data = data[:, None] # force 2d
+            data = data[:, None]  # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
             data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
-            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
+            raise TypeError(
+                'second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         while data.nbytes > 0:
-            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels) # 4 bytes per sample
+            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels)  # 4 bytes per sample
 
             if nwrite == 0:
                 time.sleep(0.001)
@@ -827,6 +846,7 @@ class _Player(_Stream):
             bytes = data[:nwrite].ravel().tostring()
             _pulse._pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
             data = data[nwrite:]
+
 
 class _Recorder(_Stream):
     """A context manager for an active input stream.
@@ -842,14 +862,16 @@ class _Recorder(_Stream):
 
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
-        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
+        self._pending_chunk = numpy.zeros((0,), dtype='float32')
         self._record_event = threading.Event()
 
     def _connect_stream(self, bufattr):
         _pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+
         @_ffi.callback("pa_stream_request_cb_t")
         def read_callback(stream, nbytes, userdata):
             self._record_event.set()
+
         self._callback = read_callback
         _pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
@@ -876,7 +898,7 @@ class _Recorder(_Stream):
             buffer = _ffi.buffer(data_ptr[0], nbytes_ptr[0])
             chunk = numpy.frombuffer(buffer, dtype='float32').copy()
         if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-            chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+            chunk = numpy.zeros(nbytes_ptr[0] // 4, dtype='float32')
         if nbytes_ptr[0] > 0:
             _pulse._pa_stream_drop(self.stream)
             return chunk
@@ -926,7 +948,7 @@ class _Recorder(_Stream):
                 while captured_frames < numframes:
                     chunk = self._record_chunk()
                     captured_data.append(chunk)
-                    captured_frames += len(chunk)/self.channels
+                    captured_frames += len(chunk) / self.channels
                 to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
                 captured_data[-1], self._pending_chunk = numpy.split(captured_data[-1], [to_split])
                 return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
@@ -944,5 +966,5 @@ class _Recorder(_Stream):
             Numpy array.
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
+        self._pending_chunk = numpy.zeros((0,), dtype='float32')
         return last_chunk
