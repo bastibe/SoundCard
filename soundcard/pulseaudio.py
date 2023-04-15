@@ -36,7 +36,6 @@ def _lock_and_block(func):
        block until the operation has finished.
 
     Use this for pulseaudio functions that return a `pa_operation *`.
-
     """
     def func_with_lock(*args, **kwargs):
         self = args[0]
@@ -48,8 +47,8 @@ def _lock_and_block(func):
 
 
 def channel_name_map():
-    """
-    Return a dict containing the channel position index for every channel position name string.
+    """Return a dict containing the channel position index for every
+    channel position name string.
     """
 
     channel_indices = {
@@ -84,7 +83,6 @@ class _PulseAudio:
 
     Any function that would return a `pa_operation *` in pulseaudio
     will block until the operation has finished.
-
     """
 
     def __init__(self):
@@ -105,8 +103,8 @@ class _PulseAudio:
         """Get current progam name.
 
         Will handle `./script.py`, `python path/to/script.py`,
-        `python -m module.submodule` and `python -c 'code(x=y)'`.
-        See https://docs.python.org/3/using/cmdline.html#interface-options
+        `python -m module.submodule` and `python -c 'code(x=y)'`. See
+        https://docs.python.org/3/using/cmdline.html#interface-options
         """
         import sys
         prog_name = sys.argv[0]
@@ -140,7 +138,7 @@ class _PulseAudio:
 
     @property
     def name(self):
-        """Return application name stored in client proplist"""
+        """Return application name stored in client proplist."""
         idx = self._pa_context_get_index(self.context)
         if idx < 0:  # PA_INVALID_INDEX == -1
             raise RuntimeError("Could not get client index of PulseAudio context.")
@@ -241,9 +239,8 @@ class _PulseAudio:
     def _lock_mainloop(self):
         """Context manager for locking the mainloop.
 
-        Hold this lock before calling any pulseaudio function while
-        the mainloop is running.
-
+        Hold this lock before calling any pulseaudio function while the
+        mainloop is running.
         """
 
         class Lock():
@@ -323,8 +320,9 @@ def get_speaker(id):
     Parameters
     ----------
     id : int or str
-        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
-        speaker name, or a fuzzy-matched pattern for the speaker name.
+        can be a backend id string (Windows, Linux) or a device id int
+        (MacOS), a substring of the speaker name, or a fuzzy-matched
+        pattern for the speaker name.
 
     Returns
     -------
@@ -385,8 +383,9 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     Parameters
     ----------
     id : int or str
-        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
-        speaker name, or a fuzzy-matched pattern for the speaker name.
+        can be a backend id string (Windows, Linux) or a device id int
+        (MacOS), a substring of the speaker name, or a fuzzy-matched
+        pattern for the speaker name.
     include_loopback : bool
         allow recording of speaker outputs
     exclude_monitors : bool
@@ -408,8 +407,8 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
 def _match_soundcard(id, soundcards, include_loopback=False):
     """Find id in a list of soundcards.
 
-    id can be a pulseaudio id, a substring of the microphone name, or
-    a fuzzy-matched pattern for the microphone name.
+    id can be a pulseaudio id, a substring of the microphone name, or a
+    fuzzy-matched pattern for the microphone name.
     """
     if not include_loopback:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
@@ -455,8 +454,8 @@ def set_name(name):
     Parameters
     ----------
     name :  str
-        The application using the soundcard
-        will be identified by the OS using this name.
+        The application using the soundcard will be identified by the
+        OS using this name.
     """
     _pulse.name = name
 
@@ -467,11 +466,10 @@ class _SoundCard:
 
     @property
     def channels(self):
-        """int or list(int): Either the number of channels, or a list of
-        channel indices. Index -1 is the mono mixture of all channels,
-        and subsequent numbers are channel numbers (left, right,
-        center, ...)
-
+        """int or list(int): Either the number of channels, or a list
+        of channel indices. Index -1 is the mono mixture of all
+        channels, and subsequent numbers are channel numbers (left,
+        right, center, ...)
         """
         return self._get_info()['channels']
 
@@ -493,13 +491,12 @@ class _Speaker(_SoundCard):
     """A soundcard output. Can be used to play audio.
 
     Use the :func:`play` method to play one piece of audio, or use the
-    :func:`player` method to get a context manager for playing continuous
-    audio.
+    :func:`player` method to get a context manager for playing
+    continuous audio.
 
     Multiple calls to :func:`play` play immediately and concurrently,
     while the :func:`player` schedules multiple pieces of audio one
     after another.
-
     """
 
     def __repr__(self):
@@ -514,18 +511,20 @@ class _Speaker(_SoundCard):
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
             Play on these channels. For example, ``[0, 3]`` will play
-            stereo data on the physical channels one and four.
-            Defaults to use all available channels.
+            stereo data on the physical channels one and four. Defaults
+            to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
-            Will play this many samples at a time. Choose a lower
-            block size for lower latency and more CPU usage.
+            Will play this many samples at a time. Choose a lower block
+            size for lower latency and more CPU usage.
         maxlatency : int
-            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur when
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur when
             processing cannot keep up.
         report_under_overflow : bool, optional
-            Linux only: print debug information to terminal, whenever buffer underflows or overflows occur.
+            Linux only: print debug information to terminal, whenever
+            buffer underflows or overflows occur.
 
         Returns
         -------
@@ -541,23 +540,26 @@ class _Speaker(_SoundCard):
         Parameters
         ----------
         data : numpy array
-            The audio data to play. Must be a *frames x channels* Numpy array.
+            The audio data to play. Must be a *frames x channels* Numpy
+             array.
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
             Play on these channels. For example, ``[0, 3]`` will play
-            stereo data on the physical channels one and four.
-            Defaults to use all available channels.
+            stereo data on the physical channels one and four. Defaults
+            to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
-            Will play this many samples at a time. Choose a lower
-            block size for lower latency and more CPU usage.
+            Will play this many samples at a time. Choose a lower block
+            size for lower latency and more CPU usage.
         maxlatency : int
-            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
-            when the processing cannot keep up.
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when the
+            processing cannot keep up.
         report_under_overflow : bool, optional
-            Linux only: print debug information to terminal, whenever buffer underflows or overflows occur.
+            Linux only: print debug information to terminal, whenever
+            buffer underflows or overflows occur.
         """
         if channels is None:
             channels = self.channels
@@ -578,7 +580,6 @@ class _Microphone(_SoundCard):
     Multiple calls to :func:`record` record immediately and
     concurrently, while the :func:`recorder` schedules multiple pieces
     of audio to be recorded one after another.
-
     """
 
     def __repr__(self):
@@ -600,8 +601,8 @@ class _Microphone(_SoundCard):
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
-            Record on these channels. For example, ``[0, 3]`` will record
-            stereo data from the physical channels one and four.
+            Record on these channels. For example, ``[0, 3]`` will
+            record stereo data from the physical channels one and four.
             Defaults to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
@@ -609,8 +610,9 @@ class _Microphone(_SoundCard):
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
         maxlatency : int
-            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
-            when the processing cannot keep up.
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when the
+            processing cannot keep up.
         exclusive_mode : bool, optional
             Windows only: open sound card in exclusive mode, which
             might be necessary for short block lengths or high
@@ -634,8 +636,8 @@ class _Microphone(_SoundCard):
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
-            Record on these channels. For example, ``[0, 3]`` will record
-            stereo data from the physical channels one and four.
+            Record on these channels. For example, ``[0, 3]`` will
+            record stereo data from the physical channels one and four.
             Defaults to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
@@ -643,14 +645,15 @@ class _Microphone(_SoundCard):
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
         maxlatency : int
-            Linux only: restrict latency to maxlatency sample frames. If set, buffer underflows or overflows will occur,
-            when the processing cannot keep up.
-
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when
+            the processing cannot keep up.
 
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
+            The recorded audio data. Will be a *frames x channels*
+            Numpy array.
         """
         if channels is None:
             channels = self.channels
@@ -758,7 +761,6 @@ class _Player(_Stream):
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
     def _connect_stream(self, bufattr):
@@ -793,17 +795,17 @@ class _Player(_Stream):
 
         This function will return *before* all data has been played,
         so that additional data can be provided for gapless playback.
-        The amount of buffering can be controlled through the
-        blocksize of the player object.
+        The amount of buffering can be controlled through the blocksize
+        of the player object.
 
-        If data is provided faster than it is played, later pieces
-        will be queued up and played one after another.
+        If data is provided faster than it is played, later pieces will
+        be queued up and played one after another.
 
         Parameters
         ----------
         data : numpy array
-            The audio data to play. Must be a *frames x channels* Numpy array.
-
+            The audio data to play. Must be a *frames x channels* Numpy
+            array.
         """
 
         data = numpy.array(data, dtype='float32', order='C')
@@ -830,12 +832,11 @@ class _Recorder(_Stream):
 
     Audio recording is available as soon as the context manager is
     entered. Recorded audio data can be read using the :func:`record`
-    method. If no audio data is available, :func:`record` will block until
-    the requested amount of audio data has been recorded.
+    method. If no audio data is available, :func:`record` will block
+    until the requested amount of audio data has been recorded.
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
     def __init__(self, *args, **kwargs):
@@ -852,12 +853,12 @@ class _Recorder(_Stream):
         _pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
     def _record_chunk(self):
-        '''Record one chunk of audio data, as returned by pulseaudio
+        """Record one chunk of audio data, as returned by pulseaudio
 
-        The data will be returned as a 1D numpy array, which will be used by
-        the `record` method. This function is the interface of the `_Recorder`
-        object with pulseaudio
-        '''
+        The data will be returned as a 1D numpy array, which will be used
+        by the `record` method. This function is the interface of the
+        `_Recorder` object with pulseaudio
+        """
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
         readable_bytes = _pulse._pa_stream_readable_size(self.stream)
@@ -907,8 +908,8 @@ class _Recorder(_Stream):
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
-
+            The recorded audio data. Will be a *frames x channels* Numpy
+            array.
         """
         if numframes is None:
             return numpy.reshape(numpy.concatenate([self.flush().ravel(), self._record_chunk()]),
@@ -938,8 +939,8 @@ class _Recorder(_Stream):
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
-
+            The recorded audio data. Will be a *frames x channels*
+            Numpy array.
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
         self._pending_chunk = numpy.zeros((0, ), dtype='float32')
