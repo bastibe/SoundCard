@@ -23,7 +23,8 @@ except OSError:
 # with the C API:
 
 def _lock(func):
-    """Call a pulseaudio function while holding the mainloop lock."""
+    """Call a Pulseaudio function while holding the mainloop lock."""
+
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
@@ -32,10 +33,10 @@ def _lock(func):
 
 
 def _lock_and_block(func):
-    """Call a pulseaudio function while holding the mainloop lock, and
-       block until the operation has finished.
+    """Call a Pulseaudio function while holding the mainloop lock, and
+    block until the operation has finished.
 
-    Use this for pulseaudio functions that return a `pa_operation *`.
+    Use this for Pulseaudio functions that return a `pa_operation *`.
     """
     def func_with_lock(*args, **kwargs):
         self = args[0]
@@ -71,17 +72,17 @@ def channel_name_map():
 
 
 class _PulseAudio:
-    """Proxy for communcation with Pulseaudio.
+    """Proxy for communication with Pulseaudio.
 
-    This holds the pulseaudio main loop, and a pulseaudio context.
+    This holds the Pulseaudio main loop, and a Pulseaudio context.
     Together, these provide the building blocks for interacting with
     pulseaudio.
 
-    This can be used to query the pulseaudio server for sources,
+    This can be used to query the Pulseaudio server for sources,
     sinks, and server information, and provides thread-safe access to
-    the main pulseaudio functions.
+    the main Pulseaudio functions.
 
-    Any function that would return a `pa_operation *` in pulseaudio
+    Any function that would return a `pa_operation *` in Pulseaudio
     will block until the operation has finished.
     """
 
@@ -100,7 +101,7 @@ class _PulseAudio:
 
     @staticmethod
     def _infer_program_name():
-        """Get current progam name.
+        """Get current program name.
 
         Will handle `./script.py`, `python path/to/script.py`,
         `python -m module.submodule` and `python -c 'code(x=y)'`. See
@@ -239,7 +240,7 @@ class _PulseAudio:
     def _lock_mainloop(self):
         """Context manager for locking the mainloop.
 
-        Hold this lock before calling any pulseaudio function while the
+        Hold this lock before calling any Pulseaudio function while the
         mainloop is running.
         """
 
@@ -250,7 +251,7 @@ class _PulseAudio:
                 _pa.pa_threaded_mainloop_unlock(self.mainloop)
         return Lock()
 
-    # create thread-safe versions of all used pulseaudio functions:
+    # create thread-safe versions of all used Pulseaudio functions:
     _pa_context_get_source_info_list = _lock_and_block(_pa.pa_context_get_source_info_list)
     _pa_context_get_source_info_by_name = _lock_and_block(_pa.pa_context_get_source_info_by_name)
     _pa_context_get_sink_info_list = _lock_and_block(_pa.pa_context_get_sink_info_list)
@@ -405,9 +406,9 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
 
 
 def _match_soundcard(id, soundcards, include_loopback=False):
-    """Find id in a list of soundcards.
+    """Find id in a list of sound cards.
 
-    id can be a pulseaudio id, a substring of the microphone name, or a
+    id can be a Pulseaudio id, a substring of the microphone name, or a
     fuzzy-matched pattern for the microphone name.
     """
     if not include_loopback:
@@ -454,7 +455,7 @@ def set_name(name):
     Parameters
     ----------
     name :  str
-        The application using the soundcard will be identified by the
+        The application using the sound card will be identified by the
         OS using this name.
     """
     _pulse.name = name
@@ -853,11 +854,11 @@ class _Recorder(_Stream):
         _pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
     def _record_chunk(self):
-        """Record one chunk of audio data, as returned by pulseaudio
+        """Record one chunk of audio data, as returned by Pulseaudio
 
-        The data will be returned as a 1D numpy array, which will be used
+        The data will be returned as a 1D Numpy array, which will be used
         by the `record` method. This function is the interface of the
-        `_Recorder` object with pulseaudio
+        `_Recorder` object with Pulseaudio
         """
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
@@ -884,7 +885,7 @@ class _Recorder(_Stream):
         """Record a block of audio data.
 
         The data will be returned as a *frames × channels* float32
-        numpy array. This function will wait until ``numframes``
+        Numpy array. This function will wait until ``numframes``
         frames have been recorded. If numframes is given, it will
         return exactly ``numframes`` frames, and buffer the rest for
         later.
