@@ -1,6 +1,6 @@
 import os
 import atexit
-import collections
+import collections.abc
 import time
 import re
 import threading
