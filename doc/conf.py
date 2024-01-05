@@ -179,7 +179,7 @@ epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
 
-from mock import Mock as MagicMock
+from unittest.mock import Mock as MagicMock
 
 class Mock(MagicMock):
     @classmethod
