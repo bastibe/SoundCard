@@ -179,15 +179,5 @@ epub_exclude_files = ['search.html']
 
 # -- Extension configuration -------------------------------------------------
 
-from unittest.mock import MagicMock
-
-class CFFIMock(MagicMock):
-    @classmethod
-    def __getattr__(cls, name):
-        return CFFIMock()
-
-    def __eq__(self, other):
-        # so _pa_context_get_state() == PA_CONTEXT_READY
-        return isinstance(other, CFFIMock)
-
-sys.modules.update({'cffi': CFFIMock()})
+import fake_cffi
+sys.modules['cffi'] = sys.modules['fake_cffi']
