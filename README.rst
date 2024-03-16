@@ -312,3 +312,5 @@ Changelog
 - 2021-12-23 fixes deprecation for Python 3.10
   (Thank you, Nekyo!)
 - 2022-04-29 fixes deprecation in recent Numpy
+- 2024-03-16 fixes empty soundcard list on macOS
+  (Thank you, Patrice Brend'amour!)
