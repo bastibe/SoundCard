@@ -260,8 +260,7 @@ class _CoreAudio:
         err = _ca.AudioObjectGetPropertyData(target, prop, 0, _ffi.NULL,
                                              size, prop_data)
         assert err == 0, "Can't get Core Audio property data"
-
-        return [prop_data[idx] for idx in range(num_values)]
+        return prop_data
 
     @staticmethod
     def set_property(target, selector, prop_data, scope=_cac.kAudioObjectPropertyScopeGlobal):
@@ -505,9 +504,10 @@ class _AudioUnit:
                                           data, datasize)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
-        if num_values == 1:
+        # return trivial data trivially
+        if num_values == 1 and (type == "UInt32" or type == "Float64"):
             return data[0]
-        else:
+        else:  # everything else, return the cdata, to keep it alive
             return data
 
     @property
