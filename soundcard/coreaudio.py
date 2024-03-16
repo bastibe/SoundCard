@@ -423,7 +423,7 @@ class _AudioUnit:
 
         audiocomponent = _au.AudioComponentFindNext(_ffi.NULL, desc)
         if not audiocomponent:
-            raise Runtime("could not find audio component")
+            raise RuntimeError("could not find audio component")
         self.ptr = _ffi.new("AudioComponentInstance*")
         status = _au.AudioComponentInstanceNew(audiocomponent, self.ptr)
         if status:
