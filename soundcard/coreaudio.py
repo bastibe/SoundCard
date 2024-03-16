@@ -480,6 +480,7 @@ class _AudioUnit:
             self.channels = channels
         else:
             raise TypeError('channels must be iterable or integer')
+        self._set_channels(self.channels)
 
     def _set_property(self, property, scope, element, data):
         if '[]' in _ffi.typeof(data).cname:
@@ -562,16 +563,7 @@ class _AudioUnit:
             _cac.kAudioUnitProperty_SampleRate,
             self._au_scope, self._au_element, data)
 
-    @property
-    def channels(self):
-        streamformat = self._get_property(
-            _cac.kAudioUnitProperty_StreamFormat,
-            self._au_scope, self._au_element, "AudioStreamBasicDescription")
-        assert streamformat
-        return streamformat.mChannelsPerFrame
-
-    @channels.setter
-    def channels(self, channels):
+    def _set_channels(self, channels):
         streamformat = _ffi.new(
             "AudioStreamBasicDescription*",
             dict(mSampleRate=self.samplerate,
