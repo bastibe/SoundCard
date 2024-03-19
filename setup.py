@@ -23,6 +23,7 @@ setup(
         'Topic :: Multimedia :: Sound/Audio :: Players',
     ],
     long_description=open('README.rst').read(),
+    long_description_content_type='text/x-rst',
     entry_points={
         "pyinstaller40": [
             "hook-dirs = soundcard.__pyinstaller:get_hook_dirs",

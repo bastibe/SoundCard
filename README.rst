@@ -170,6 +170,7 @@ https://freedesktop.org/software/pulseaudio/doxygen/channelmap_8h.html
 Since the mapping of position indices to audio channels is not obvious, a
 dictionary containing all possible positions and channel indices can be
 retrieved by calling ``channel_name_map()``. The positions for the indices up to 10 are: ::
+
     'mono': -1,
     'left': 0,
     'right': 1,
