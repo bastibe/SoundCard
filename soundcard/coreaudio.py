@@ -260,8 +260,7 @@ class _CoreAudio:
         err = _ca.AudioObjectGetPropertyData(target, prop, 0, _ffi.NULL,
                                              size, prop_data)
         assert err == 0, "Can't get Core Audio property data"
-
-        return [prop_data[idx] for idx in range(num_values)]
+        return prop_data
 
     @staticmethod
     def set_property(target, selector, prop_data, scope=_cac.kAudioObjectPropertyScopeGlobal):
@@ -424,7 +423,7 @@ class _AudioUnit:
 
         audiocomponent = _au.AudioComponentFindNext(_ffi.NULL, desc)
         if not audiocomponent:
-            raise Runtime("could not find audio component")
+            raise RuntimeError("could not find audio component")
         self.ptr = _ffi.new("AudioComponentInstance*")
         status = _au.AudioComponentInstanceNew(audiocomponent, self.ptr)
         if status:
@@ -481,6 +480,7 @@ class _AudioUnit:
             self.channels = channels
         else:
             raise TypeError('channels must be iterable or integer')
+        self._set_channels(self.channels)
 
     def _set_property(self, property, scope, element, data):
         if '[]' in _ffi.typeof(data).cname:
@@ -505,9 +505,10 @@ class _AudioUnit:
                                           data, datasize)
         if status != 0:
             raise RuntimeError(_cac.error_number_to_string(status))
-        if num_values == 1:
+        # return trivial data trivially
+        if num_values == 1 and (type == "UInt32" or type == "Float64"):
             return data[0]
-        else:
+        else:  # everything else, return the cdata, to keep it alive
             return data
 
     @property
@@ -562,16 +563,7 @@ class _AudioUnit:
             _cac.kAudioUnitProperty_SampleRate,
             self._au_scope, self._au_element, data)
 
-    @property
-    def channels(self):
-        streamformat = self._get_property(
-            _cac.kAudioUnitProperty_StreamFormat,
-            self._au_scope, self._au_element, "AudioStreamBasicDescription")
-        assert streamformat
-        return streamformat.mChannelsPerFrame
-
-    @channels.setter
-    def channels(self, channels):
+    def _set_channels(self, channels):
         streamformat = _ffi.new(
             "AudioStreamBasicDescription*",
             dict(mSampleRate=self.samplerate,
