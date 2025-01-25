@@ -714,7 +714,7 @@ class _Recorder(_AudioClient):
         self._ppCaptureClient = self._capture_client()
         hr = self._ptr[0][0].lpVtbl.Start(self._ptr[0])
         _com.check_error(hr)
-        self._pending_chunk = numpy.zeros([0])
+        self._pending_chunk = numpy.zeros([0], dtype='float32')
         self._is_first_frame = True
         return self
 
@@ -800,11 +800,11 @@ class _Recorder(_AudioClient):
 
         if numframes is None:
             recorded_data = [self._pending_chunk, self._record_chunk()]
-            self._pending_chunk = numpy.zeros([0])
+            self._pending_chunk = numpy.zeros([0], dtype='float32')
         else:
             recorded_frames = len(self._pending_chunk)
             recorded_data = [self._pending_chunk]
-            self._pending_chunk = numpy.zeros([0])
+            self._pending_chunk = numpy.zeros([0], dtype='float32')
             required_frames = numframes*len(set(self.channelmap))
             while recorded_frames < required_frames:
                 chunk = self._record_chunk()
@@ -828,5 +828,5 @@ class _Recorder(_AudioClient):
 
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, len(set(self.channelmap))])
-        self._pending_chunk = numpy.zeros([0])
+        self._pending_chunk = numpy.zeros([0], dtype='float32')
         return last_chunk
