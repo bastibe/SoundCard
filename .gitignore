@@ -5,3 +5,4 @@ temp/
 build/
 dist/
 SoundCard.egg-info/
+.venv/
