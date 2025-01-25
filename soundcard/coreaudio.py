@@ -782,7 +782,7 @@ class _Recorder:
 
     def __enter__(self):
         self._queue = collections.deque()
-        self._pending_chunk = numpy.zeros([0, self._au.channels])
+        self._pending_chunk = numpy.zeros([0, self._au.channels], dtype='float32')
 
         channels = self._au.channels
         au = self._au.ptr[0]
@@ -869,10 +869,10 @@ class _Recorder:
 
         if numframes is None:
             blocks = [self._pending_chunk, self._record_chunk()]
-            self._pending_chunk = numpy.zeros([0, self._au.channels])
+            self._pending_chunk = numpy.zeros([0, self._au.channels], dtype='float32')
         else:
             blocks = [self._pending_chunk]
-            self._pending_chunk = numpy.zeros([0, self._au.channels])
+            self._pending_chunk = numpy.zeros([0, self._au.channels], dtype='float32')
             recorded_frames = len(blocks[0])
             while recorded_frames < numframes:
                 block = self._record_chunk()
@@ -892,5 +892,5 @@ class _Recorder:
 
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self._au.channels])
-        self._pending_chunk = numpy.zeros([0, self._au.channels])
+        self._pending_chunk = numpy.zeros([0, self._au.channels], dtype='float32')
         return last_chunk
