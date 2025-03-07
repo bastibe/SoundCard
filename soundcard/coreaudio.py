@@ -745,6 +745,10 @@ class _Resampler:
         self.todo = numpy.array(data, dtype='float32')
         while len(self.todo) > 0:
             self.outsize[0] = self.blocksize
+            self.outbuffer.mNumberBuffers = 1
+            self.outbuffer.mBuffers[0].mNumberChannels = self.channels
+            self.outbuffer.mBuffers[0].mDataByteSize = self.blocksize*4*self.channels
+            self.outbuffer.mBuffers[0].mData = self.outdata
 
             status = _au.AudioConverterFillComplexBuffer(self.audioconverter[0],
                                                          self._converter_callback,
