@@ -448,6 +448,13 @@ class _AudioUnit:
         # Therefore, if a non-native sample rate is requested, use a
         # resampled block size and resample later, manually:
         if iotype == 'input':
+            # Get the input device format
+            curr_device_format = self._get_property(_cac.kAudioUnitProperty_StreamFormat,
+                                                    _cac.kAudioUnitScope_Input,
+                                                    1,
+                                                    "AudioStreamBasicDescription")
+
+            self.samplerate = curr_device_format[0].mSampleRate
             self.resample = self.samplerate/samplerate
             # blocksize = math.ceil(blocksize*self.resample)
             # self.samplerate stays at its default value
