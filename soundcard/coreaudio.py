@@ -456,8 +456,6 @@ class _AudioUnit:
 
             self.samplerate = curr_device_format[0].mSampleRate
             self.resample = self.samplerate/samplerate
-            # blocksize = math.ceil(blocksize*self.resample)
-            # self.samplerate stays at its default value
         else:
             self.resample = 1
             self.samplerate = samplerate
@@ -745,6 +743,7 @@ class _Resampler:
         self.todo = numpy.array(data, dtype='float32')
         while len(self.todo) > 0:
             self.outsize[0] = self.blocksize
+            # Set outbuffer each iteration to avoid mDataByteSize decreasing over time
             self.outbuffer.mNumberBuffers = 1
             self.outbuffer.mBuffers[0].mNumberChannels = self.channels
             self.outbuffer.mBuffers[0].mDataByteSize = self.blocksize*4*self.channels
