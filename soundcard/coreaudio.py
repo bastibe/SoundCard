@@ -448,9 +448,14 @@ class _AudioUnit:
         # Therefore, if a non-native sample rate is requested, use a
         # resampled block size and resample later, manually:
         if iotype == 'input':
+            # Get the input device format
+            curr_device_format = self._get_property(_cac.kAudioUnitProperty_StreamFormat,
+                                                    _cac.kAudioUnitScope_Input,
+                                                    1,
+                                                    "AudioStreamBasicDescription")
+
+            self.samplerate = curr_device_format[0].mSampleRate
             self.resample = self.samplerate/samplerate
-            # blocksize = math.ceil(blocksize*self.resample)
-            # self.samplerate stays at its default value
         else:
             self.resample = 1
             self.samplerate = samplerate
@@ -738,6 +743,11 @@ class _Resampler:
         self.todo = numpy.array(data, dtype='float32')
         while len(self.todo) > 0:
             self.outsize[0] = self.blocksize
+            # Set outbuffer each iteration to avoid mDataByteSize decreasing over time
+            self.outbuffer.mNumberBuffers = 1
+            self.outbuffer.mBuffers[0].mNumberChannels = self.channels
+            self.outbuffer.mBuffers[0].mDataByteSize = self.blocksize*4*self.channels
+            self.outbuffer.mBuffers[0].mData = self.outdata
 
             status = _au.AudioConverterFillComplexBuffer(self.audioconverter[0],
                                                          self._converter_callback,
