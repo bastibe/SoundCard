@@ -315,3 +315,5 @@ Changelog
 - 2022-04-29 fixes deprecation in recent Numpy
 - 2024-03-16 fixes empty soundcard list on macOS
   (Thank you, Patrice Brend'amour!)
+- 2025-03-20 fixes various issues on macOS
+  (Thank you, coexe and TnTora!)
