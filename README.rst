@@ -112,6 +112,13 @@ In order to request lower latencies, pass a ``blocksize`` to ``player`` or
 try to honor your request as best it can. On Windows/WASAPI, setting
 ``exclusive_mode=True`` might help, too (this is currently experimental).
 
+In Linux, it is possible to restrict the latency by setting the optional
+parameter ``maxlatency``, which takes an integer number of samples. The setting
+of this parameter limits the buffer size of the PulseAudio backend. If your
+algorithm cannot keep up with the playback/recording, buffer underflows or overflows
+will occur. Underflow and overflow events can be displayed by setting the optional
+argument ``report_under_overflow`` to ``True``.
+
 Another source of latency is in the ``record`` function, which buffers output up
 to the requested ``numframes``. In general, for optimal latency, you should use
 a ``numframes`` significantly lower than the ``blocksize`` above, maybe by a
