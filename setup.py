@@ -9,7 +9,7 @@ setup(
     license='BSD 3-clause',
     packages=['soundcard', 'soundcard.__pyinstaller'],
     package_data={'soundcard': ['*.py.h']},
-    install_requires=['numpy', 'cffi'],
+    install_requires=['numpy>=1.11', 'cffi'],
     python_requires='>=3.5',
     classifiers=[
         'Development Status :: 5 - Production/Stable',

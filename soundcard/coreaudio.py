@@ -728,7 +728,7 @@ class _Resampler:
 
     def converter_callback(self, converter, numberpackets, bufferlist, desc, userdata):
         numframes = min(numberpackets[0], len(self.todo), self.blocksize)
-        raw_data = self.todo[:numframes].tostring()
+        raw_data = self.todo[:numframes].tobytes()
         _ffi.memmove(self.outdata, raw_data, len(raw_data))
         bufferlist[0].mBuffers[0].mDataByteSize = len(raw_data)
         bufferlist[0].mBuffers[0].mData = self.outdata

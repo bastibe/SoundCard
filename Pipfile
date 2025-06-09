@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 cffi = "*"
-numpy = "*"
+numpy = ">=1.11"
 
 [dev-packages]
 
