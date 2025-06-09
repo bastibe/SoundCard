@@ -783,7 +783,7 @@ class _Player(_Stream):
             if nwrite == 0:
                 time.sleep(0.001)
                 continue
-            bytes = data[:nwrite].ravel().tostring()
+            bytes = data[:nwrite].ravel().tobytes()
             _pulse._pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
             data = data[nwrite:]
 

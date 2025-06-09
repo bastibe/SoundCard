@@ -665,7 +665,7 @@ class _Player(_AudioClient):
             if towrite == 0:
                 time.sleep(0.001)
                 continue
-            bytes = data[:towrite].ravel().tostring()
+            bytes = data[:towrite].ravel().tobytes()
             buffer = self._render_buffer(towrite)
             _ffi.memmove(buffer[0], bytes, len(bytes))
             self._render_release(towrite)

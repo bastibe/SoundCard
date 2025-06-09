@@ -1,2 +1,2 @@
 cffi
-numpy
+numpy>=1.11
