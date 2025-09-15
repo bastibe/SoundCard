@@ -317,3 +317,5 @@ Changelog
   (Thank you, Patrice Brend'amour!)
 - 2025-03-20 fixes various issues on macOS
   (Thank you, coexe and TnTora!)
+- 2025-09-15 fixes compatibility with latest Numpy
+  (Thank you, Jer Miller!)
