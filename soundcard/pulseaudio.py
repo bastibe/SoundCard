@@ -111,7 +111,10 @@ class _PulseAudio:
         import sys
         prog_name = sys.argv[0]
         if prog_name == "-c":
-            return sys.argv[1][:30] + "..."
+            if len(sys.argv) > 1:
+                return sys.argv[1][:30] + "..."
+            else:
+                return "..."
         if prog_name == "-m":
             prog_name = sys.argv[1]
         # Usually even with -m, sys.argv[0] will already be a path,
