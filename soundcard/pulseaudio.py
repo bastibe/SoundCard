@@ -400,7 +400,6 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     microphones = _pulse.source_list
     return _Microphone(id=_match_soundcard(id, microphones, include_loopback)['id'])
 
-
 def _match_soundcard(id, soundcards, include_loopback=False):
     """Find id in a list of soundcards.
 
@@ -415,19 +414,29 @@ def _match_soundcard(id, soundcards, include_loopback=False):
     else:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards}
         soundcards_by_name = {soundcard['name']: soundcard for soundcard in soundcards}
+
+    # index search
+    try:
+        return soundcards[int(id)]
+    except (ValueError,IndexError):
+        pass
+
+    # id search
     if id in soundcards_by_id:
         return soundcards_by_id[id]
+
     # try substring match:
     for name, soundcard in soundcards_by_name.items():
         if id in name:
             return soundcard
+
     # try fuzzy match:
     pattern = '.*'.join(id)
     for name, soundcard in soundcards_by_name.items():
         if re.match(pattern, name):
             return soundcard
-    raise IndexError('no soundcard with id {}'.format(id))
 
+    raise IndexError('no soundcard with id {}'.format(id))
 
 def get_name():
     """Get application name.
