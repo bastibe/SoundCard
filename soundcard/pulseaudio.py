@@ -18,40 +18,43 @@ try:
 except OSError:
     # Try explicit file name, if the general does not work (e.g. on nixos)
     _pa = _ffi.dlopen('libpulse.so')
-    
+
+
 # First, we need to define a global _PulseAudio proxy for interacting
 # with the C API:
 
 def _lock(func):
-    """Call a pulseaudio function while holding the mainloop lock."""
+    """Call a Pulseaudio function while holding the mainloop lock."""
+
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
             return func(*args[1:], **kwargs)
+
     return func_with_lock
 
 
 def _lock_and_block(func):
-    """Call a pulseaudio function while holding the mainloop lock, and
-       block until the operation has finished.
+    """Call a Pulseaudio function while holding the mainloop lock, and
+    block until the operation has finished.
 
-    Use this for pulseaudio functions that return a `pa_operation *`.
-
+    Use this for Pulseaudio functions that return a `pa_operation *`.
     """
+
     def func_with_lock(*args, **kwargs):
         self = args[0]
         with self._lock_mainloop():
             operation = func(*args[1:], **kwargs)
         self._block_operation(operation)
         self._pa_operation_unref(operation)
+
     return func_with_lock
 
 
 def channel_name_map():
+    """Return a dict containing the channel position index for every
+    channel position name string.
     """
-    Return a dict containing the channel position index for every channel position name string.
-    """
-
     channel_indices = {
         _ffi.string(_pa.pa_channel_position_to_string(idx)).decode('utf-8'): idx for idx in
         range(_pa.PA_CHANNEL_POSITION_MAX)
@@ -72,19 +75,18 @@ def channel_name_map():
 
 
 class _PulseAudio:
-    """Proxy for communcation with Pulseaudio.
+    """Proxy for communication with Pulseaudio.
 
-    This holds the pulseaudio main loop, and a pulseaudio context.
+    This holds the Pulseaudio main loop, and a Pulseaudio context.
     Together, these provide the building blocks for interacting with
     pulseaudio.
 
-    This can be used to query the pulseaudio server for sources,
+    This can be used to query the Pulseaudio server for sources,
     sinks, and server information, and provides thread-safe access to
-    the main pulseaudio functions.
+    the main Pulseaudio functions.
 
-    Any function that would return a `pa_operation *` in pulseaudio
+    Any function that would return a `pa_operation *` in Pulseaudio
     will block until the operation has finished.
-
     """
 
     def __init__(self):
@@ -96,17 +98,19 @@ class _PulseAudio:
         _pa.pa_context_connect(self.context, _ffi.NULL, _pa.PA_CONTEXT_NOFLAGS, _ffi.NULL)
         _pa.pa_threaded_mainloop_start(self.mainloop)
 
-        while self._pa_context_get_state(self.context) in (_pa.PA_CONTEXT_UNCONNECTED, _pa.PA_CONTEXT_CONNECTING, _pa.PA_CONTEXT_AUTHORIZING, _pa.PA_CONTEXT_SETTING_NAME):
+        while self._pa_context_get_state(self.context) in (
+                _pa.PA_CONTEXT_UNCONNECTED, _pa.PA_CONTEXT_CONNECTING,
+                _pa.PA_CONTEXT_AUTHORIZING, _pa.PA_CONTEXT_SETTING_NAME):
             time.sleep(0.001)
-        assert self._pa_context_get_state(self.context)==_pa.PA_CONTEXT_READY
+        assert self._pa_context_get_state(self.context) == _pa.PA_CONTEXT_READY
 
     @staticmethod
     def _infer_program_name():
-        """Get current progam name.
+        """Get current program name.
 
         Will handle `./script.py`, `python path/to/script.py`,
-        `python -m module.submodule` and `python -c 'code(x=y)'`.
-        See https://docs.python.org/3/using/cmdline.html#interface-options
+        `python -m module.submodule` and `python -c 'code(x=y)'`. See
+        https://docs.python.org/3/using/cmdline.html#interface-options
         """
         import sys
         prog_name = sys.argv[0]
@@ -140,16 +144,18 @@ class _PulseAudio:
 
     @property
     def name(self):
-        """Return application name stored in client proplist"""
+        """Return application name stored in client proplist."""
         idx = self._pa_context_get_index(self.context)
         if idx < 0:  # PA_INVALID_INDEX == -1
             raise RuntimeError("Could not get client index of PulseAudio context.")
         name = None
+
         @_ffi.callback("pa_client_info_cb_t")
         def callback(context, client_info, eol, userdata):
             nonlocal name
             if not eol:
                 name = _ffi.string(client_info.name).decode('utf-8')
+
         self._pa_context_get_client_info(self.context, idx, callback, _ffi.NULL)
         assert name is not None
         return name
@@ -157,10 +163,12 @@ class _PulseAudio:
     @name.setter
     def name(self, name):
         rv = None
+
         @_ffi.callback("pa_context_success_cb_t")
         def callback(context, success, userdata):
             nonlocal rv
             rv = success
+
         self._pa_context_set_name(self.context, name.encode(), callback, _ffi.NULL)
         assert rv is not None
         if rv == 0:
@@ -170,17 +178,20 @@ class _PulseAudio:
     def source_list(self):
         """Return a list of dicts of information about available sources."""
         info = []
+
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
                 info.append(dict(name=_ffi.string(source_info.description).decode('utf-8'),
                                  id=_ffi.string(source_info.name).decode('utf-8')))
+
         self._pa_context_get_source_info_list(self.context, callback, _ffi.NULL)
         return info
 
     def source_info(self, id):
         """Return a dictionary of information about a specific source."""
         info = []
+
         @_ffi.callback("pa_source_info_cb_t")
         def callback(context, source_info, eol, userdata):
             if not eol:
@@ -200,17 +211,21 @@ class _PulseAudio:
     def sink_list(self):
         """Return a list of dicts of information about available sinks."""
         info = []
+
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
                 info.append((dict(name=_ffi.string(sink_info.description).decode('utf-8'),
                                   id=_ffi.string(sink_info.name).decode('utf-8'))))
+
         self._pa_context_get_sink_info_list(self.context, callback, _ffi.NULL)
         return info
 
     def sink_info(self, id):
         """Return a dictionary of information about a specific sink."""
+
         info = []
+
         @_ffi.callback("pa_sink_info_cb_t")
         def callback(context, sink_info, eol, userdata):
             if not eol:
@@ -222,38 +237,43 @@ class _PulseAudio:
                     data = _pa.pa_proplist_gets(sink_info.proplist, prop.encode())
                     info_dict[prop] = _ffi.string(data).decode('utf-8') if data else None
                 info.append(info_dict)
+
         self._pa_context_get_sink_info_by_name(self.context, id.encode(), callback, _ffi.NULL)
         return info[0]
 
     @property
     def server_info(self):
         """Return a dictionary of information about the server."""
+
         info = {}
+
         @_ffi.callback("pa_server_info_cb_t")
         def callback(context, server_info, userdata):
             info['server version'] = _ffi.string(server_info.server_version).decode('utf-8')
             info['server name'] = _ffi.string(server_info.server_name).decode('utf-8')
             info['default sink id'] = _ffi.string(server_info.default_sink_name).decode('utf-8')
             info['default source id'] = _ffi.string(server_info.default_source_name).decode('utf-8')
+
         self._pa_context_get_server_info(self.context, callback, _ffi.NULL)
         return info
 
     def _lock_mainloop(self):
         """Context manager for locking the mainloop.
 
-        Hold this lock before calling any pulseaudio function while
-        the mainloop is running.
-
+        Hold this lock before calling any Pulseaudio function while the
+        mainloop is running.
         """
 
         class Lock():
             def __enter__(self_):
                 _pa.pa_threaded_mainloop_lock(self.mainloop)
+
             def __exit__(self_, exc_type, exc_value, traceback):
                 _pa.pa_threaded_mainloop_unlock(self.mainloop)
+
         return Lock()
 
-    # create thread-safe versions of all used pulseaudio functions:
+    # create thread-safe versions of all used Pulseaudio functions:
     _pa_context_get_source_info_list = _lock_and_block(_pa.pa_context_get_source_info_list)
     _pa_context_get_source_info_by_name = _lock_and_block(_pa.pa_context_get_source_info_by_name)
     _pa_context_get_sink_info_list = _lock_and_block(_pa.pa_context_get_sink_info_list)
@@ -286,9 +306,14 @@ class _PulseAudio:
     _pa_stream_writable_size = _lock(_pa.pa_stream_writable_size)
     _pa_stream_write = _lock(_pa.pa_stream_write)
     _pa_stream_set_read_callback = _pa.pa_stream_set_read_callback
+    _pa_stream_set_overflow_callback = _pa.pa_stream_set_overflow_callback
+    _pa_stream_set_underflow_callback = _pa.pa_stream_set_underflow_callback
+    _pa_stream_get_underflow_index = _pa.pa_stream_get_underflow_index
+
 
 _pulse = _PulseAudio()
 atexit.register(_pulse._shutdown)
+
 
 def all_speakers():
     """A list of all connected speakers.
@@ -296,7 +321,6 @@ def all_speakers():
     Returns
     -------
     speakers : list(_Speaker)
-
     """
     return [_Speaker(id=s['id']) for s in _pulse.sink_list]
 
@@ -307,7 +331,6 @@ def default_speaker():
     Returns
     -------
     speaker : _Speaker
-
     """
     name = _pulse.server_info['default sink id']
     return get_speaker(name)
@@ -319,13 +342,13 @@ def get_speaker(id):
     Parameters
     ----------
     id : int or str
-        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
-        speaker name, or a fuzzy-matched pattern for the speaker name.
+        can be a backend id string (Windows, Linux) or a device id int
+        (MacOS), a substring of the speaker name, or a fuzzy-matched
+        pattern for the speaker name.
 
     Returns
     -------
     speaker : _Speaker
-
     """
     speakers = _pulse.sink_list
     return _Speaker(id=_match_soundcard(id, speakers)['id'])
@@ -347,9 +370,7 @@ def all_microphones(include_loopback=False, exclude_monitors=True):
     Returns
     -------
     microphones : list(_Microphone)
-
     """
-
     if not exclude_monitors:
         warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
         include_loopback = not exclude_monitors
@@ -381,8 +402,9 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     Parameters
     ----------
     id : int or str
-        can be a backend id string (Windows, Linux) or a device id int (MacOS), a substring of the
-        speaker name, or a fuzzy-matched pattern for the speaker name.
+        can be a backend id string (Windows, Linux) or a device id int
+        (MacOS), a substring of the speaker name, or a fuzzy-matched
+        pattern for the speaker name.
     include_loopback : bool
         allow recording of speaker outputs
     exclude_monitors : bool
@@ -392,7 +414,6 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
     -------
     microphone : _Microphone
     """
-
     if not exclude_monitors:
         warnings.warn("The exclude_monitors flag is being replaced by the include_loopback flag", DeprecationWarning)
         include_loopback = not exclude_monitors
@@ -402,10 +423,10 @@ def get_microphone(id, include_loopback=False, exclude_monitors=True):
 
 
 def _match_soundcard(id, soundcards, include_loopback=False):
-    """Find id in a list of soundcards.
+    """Find id in a list of sound cards.
 
-    id can be a pulseaudio id, a substring of the microphone name, or
-    a fuzzy-matched pattern for the microphone name.
+    id can be a Pulseaudio id, a substring of the microphone name, or a
+    fuzzy-matched pattern for the microphone name.
     """
     if not include_loopback:
         soundcards_by_id = {soundcard['id']: soundcard for soundcard in soundcards
@@ -451,8 +472,8 @@ def set_name(name):
     Parameters
     ----------
     name :  str
-        The application using the soundcard
-        will be identified by the OS using this name.
+        The application using the sound card will be identified by the
+        OS using this name.
     """
     _pulse.name = name
 
@@ -463,11 +484,10 @@ class _SoundCard:
 
     @property
     def channels(self):
-        """int or list(int): Either the number of channels, or a list of
-        channel indices. Index -1 is the mono mixture of all channels,
-        and subsequent numbers are channel numbers (left, right,
-        center, ...)
-
+        """int or list(int): Either the number of channels, or a list
+        of channel indices. Index -1 is the mono mixture of all
+        channels, and subsequent numbers are channel numbers (left,
+        right, center, ...)
         """
         return self._get_info()['channels']
 
@@ -489,19 +509,18 @@ class _Speaker(_SoundCard):
     """A soundcard output. Can be used to play audio.
 
     Use the :func:`play` method to play one piece of audio, or use the
-    :func:`player` method to get a context manager for playing continuous
-    audio.
+    :func:`player` method to get a context manager for playing
+    continuous audio.
 
     Multiple calls to :func:`play` play immediately and concurrently,
     while the :func:`player` schedules multiple pieces of audio one
     after another.
-
     """
 
     def __repr__(self):
         return '<Speaker {} ({} channels)>'.format(self.name, self.channels)
 
-    def player(self, samplerate, channels=None, blocksize=None):
+    def player(self, samplerate, channels=None, blocksize=None, maxlatency=None, report_under_overflow=False):
         """Create Player for playing audio.
 
         Parameters
@@ -510,17 +529,20 @@ class _Speaker(_SoundCard):
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
             Play on these channels. For example, ``[0, 3]`` will play
-            stereo data on the physical channels one and four.
-            Defaults to use all available channels.
+            stereo data on the physical channels one and four. Defaults
+            to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
-            Will play this many samples at a time. Choose a lower
-            block size for lower latency and more CPU usage.
-        exclusive_mode : bool, optional
-            Windows only: open sound card in exclusive mode, which
-            might be necessary for short block lengths or high
-            sample rates or optimal performance. Default is ``False``.
+            Will play this many samples at a time. Choose a lower block
+            size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur when
+            processing cannot keep up.
+        report_under_overflow : bool, optional
+            Linux only: print debug information to terminal, whenever
+            buffer underflows or overflows occur.
 
         Returns
         -------
@@ -528,30 +550,38 @@ class _Speaker(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        return _Player(self._id, samplerate, channels, blocksize)
+        return _Player(self._id, samplerate, channels, blocksize, maxlatency, report_under_overflow)
 
-    def play(self, data, samplerate, channels=None, blocksize=None):
+    def play(self, data, samplerate, channels=None, blocksize=None, maxlatency=None, report_under_overflow=False):
         """Play some audio data.
 
         Parameters
         ----------
         data : numpy array
-            The audio data to play. Must be a *frames x channels* Numpy array.
+            The audio data to play. Must be a *frames x channels* Numpy
+             array.
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
             Play on these channels. For example, ``[0, 3]`` will play
-            stereo data on the physical channels one and four.
-            Defaults to use all available channels.
+            stereo data on the physical channels one and four. Defaults
+            to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
-            Will play this many samples at a time. Choose a lower
-            block size for lower latency and more CPU usage.
+            Will play this many samples at a time. Choose a lower block
+            size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when the
+            processing cannot keep up.
+        report_under_overflow : bool, optional
+            Linux only: print debug information to terminal, whenever
+            buffer underflows or overflows occur.
         """
         if channels is None:
             channels = self.channels
-        with _Player(self._id, samplerate, channels, blocksize) as s:
+        with _Player(self._id, samplerate, channels, blocksize, maxlatency, report_under_overflow) as s:
             s.play(data)
 
     def _get_info(self):
@@ -568,7 +598,6 @@ class _Microphone(_SoundCard):
     Multiple calls to :func:`record` record immediately and
     concurrently, while the :func:`recorder` schedules multiple pieces
     of audio to be recorded one after another.
-
     """
 
     def __repr__(self):
@@ -582,7 +611,7 @@ class _Microphone(_SoundCard):
         """bool : Whether this microphone is recording a speaker."""
         return self._get_info()['device.class'] == 'monitor'
 
-    def recorder(self, samplerate, channels=None, blocksize=None):
+    def recorder(self, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Create Recorder for recording audio.
 
         Parameters
@@ -590,14 +619,18 @@ class _Microphone(_SoundCard):
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
-            Record on these channels. For example, ``[0, 3]`` will record
-            stereo data from the physical channels one and four.
+            Record on these channels. For example, ``[0, 3]`` will
+            record stereo data from the physical channels one and four.
             Defaults to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when the
+            processing cannot keep up.
         exclusive_mode : bool, optional
             Windows only: open sound card in exclusive mode, which
             might be necessary for short block lengths or high
@@ -609,9 +642,9 @@ class _Microphone(_SoundCard):
         """
         if channels is None:
             channels = self.channels
-        return _Recorder(self._id, samplerate, channels, blocksize)
+        return _Recorder(self._id, samplerate, channels, blocksize, maxlatency)
 
-    def record(self, numframes, samplerate, channels=None, blocksize=None):
+    def record(self, numframes, samplerate, channels=None, blocksize=None, maxlatency=None):
         """Record some audio data.
 
         Parameters
@@ -621,23 +654,28 @@ class _Microphone(_SoundCard):
         samplerate : int
             The desired sampling rate in Hz
         channels : {int, list(int)}, optional
-            Record on these channels. For example, ``[0, 3]`` will record
-            stereo data from the physical channels one and four.
+            Record on these channels. For example, ``[0, 3]`` will
+            record stereo data from the physical channels one and four.
             Defaults to use all available channels.
             On Linux, channel ``-1`` is the mono mix of all channels.
             On macOS, channel ``-1`` is silence.
         blocksize : int
             Will record this many samples at a time. Choose a lower
             block size for lower latency and more CPU usage.
+        maxlatency : int
+            Linux only: restrict latency to maxlatency sample frames.
+            If set, buffer underflows or overflows will occur, when
+            the processing cannot keep up.
 
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
+            The recorded audio data. Will be a *frames x channels*
+            Numpy array.
         """
         if channels is None:
             channels = self.channels
-        with _Recorder(self._id, samplerate, channels, blocksize) as r:
+        with _Recorder(self._id, samplerate, channels, blocksize, maxlatency) as r:
             return r.record(numframes)
 
 
@@ -650,15 +688,17 @@ class _Stream:
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
-    def __init__(self, id, samplerate, channels, blocksize=None, name='outputstream'):
+    def __init__(self, id, samplerate, channels, blocksize=None, maxlatency=None, report_under_overflow=False,
+                 name='outputstream'):
         self._id = id
         self._samplerate = samplerate
         self._name = name
         self._blocksize = blocksize
         self.channels = channels
+        self._maxlatency = maxlatency
+        self._report_under_overflow = report_under_overflow
 
     def __enter__(self):
         samplespec = _ffi.new("pa_sample_spec*")
@@ -693,12 +733,16 @@ class _Stream:
             errno = _pulse._pa_context_errno(_pulse.context)
             raise RuntimeError("stream creation failed with error ", errno)
         bufattr = _ffi.new("pa_buffer_attr*")
-        bufattr.maxlength = 2**32-1 # max buffer length
-        numchannels = self.channels if isinstance(self.channels, int) else len(self.channels)
-        bufattr.fragsize = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # recording block sys.getsizeof()
-        bufattr.minreq = 2**32-1 # start requesting more data at this bytes
-        bufattr.prebuf = 2**32-1 # start playback after this bytes are available
-        bufattr.tlength = self._blocksize*numchannels*4 if self._blocksize else 2**32-1 # buffer length in bytes on server
+        numchannels = samplespec.channels
+        bytes_per_sample = 4  # for _pa.PA_SAMPLE_FLOAT32LE
+        bufattr.maxlength = self._maxlatency * numchannels * bytes_per_sample if self._maxlatency else 2 ** 32 - 1
+        bufattr.fragsize = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1
+        bufattr.minreq = 2 ** 32 - 1  # start requesting more data at this bytes
+        bufattr.prebuf = 2 ** 32 - 1  # start playback after prebuf bytes are available
+
+        # buffer length in bytes on server
+        bufattr.tlength = self._blocksize * numchannels * bytes_per_sample if self._blocksize else 2 ** 32 - 1
+
         self._connect_stream(bufattr)
         while _pulse._pa_stream_get_state(self.stream) not in [_pa.PA_STREAM_READY, _pa.PA_STREAM_FAILED]:
             time.sleep(0.01)
@@ -710,7 +754,7 @@ class _Stream:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if isinstance(self, _Player): # only playback streams need to drain
+        if isinstance(self, _Player):  # only playback streams need to drain
             _pulse._pa_stream_drain(self.stream, _ffi.NULL, _ffi.NULL)
         _pulse._pa_stream_disconnect(self.stream)
         while _pulse._pa_stream_get_state(self.stream) not in (_pa.PA_STREAM_TERMINATED, _pa.PA_STREAM_FAILED):
@@ -723,7 +767,7 @@ class _Stream:
         _pulse._pa_stream_update_timing_info(self.stream, _ffi.NULL, _ffi.NULL)
         microseconds = _ffi.new("pa_usec_t*")
         _pulse._pa_stream_get_latency(self.stream, microseconds, _ffi.NULL)
-        return microseconds[0] / 1000000 # 1_000_000 (3.5 compat)
+        return microseconds[0] / 1000000  # 1_000_000 (3.5 compat)
 
 
 class _Player(_Stream):
@@ -736,12 +780,27 @@ class _Player(_Stream):
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
     def _connect_stream(self, bufattr):
+        if self._report_under_overflow:
+            @_ffi.callback("pa_stream_notify_cb_t")
+            def overflow_callback(stream, userdata):
+                print('Overflow detected.')
+
+            self._overflow_callback = overflow_callback
+            _pulse._pa_stream_set_overflow_callback(self.stream, overflow_callback, _ffi.NULL)
+
+            @_ffi.callback("pa_stream_notify_cb_t")
+            def underflow_callback(stream, userdata):
+                time_underflow = _pulse._pa_stream_get_underflow_index(stream)
+                print('Underflow detected at position ' + str(time_underflow))
+
+            self._underflow_callback = underflow_callback
+            _pulse._pa_stream_set_underflow_callback(self.stream, underflow_callback, _ffi.NULL)
+
         _pulse._pa_stream_connect_playback(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY,
-                                                _ffi.NULL, _ffi.NULL)
+                                           _ffi.NULL, _ffi.NULL)
 
     def play(self, data):
         """Play some audio data.
@@ -755,30 +814,31 @@ class _Player(_Stream):
 
         This function will return *before* all data has been played,
         so that additional data can be provided for gapless playback.
-        The amount of buffering can be controlled through the
-        blocksize of the player object.
+        The amount of buffering can be controlled through the blocksize
+        of the player object.
 
-        If data is provided faster than it is played, later pieces
-        will be queued up and played one after another.
+        If data is provided faster than it is played, later pieces will
+        be queued up and played one after another.
 
         Parameters
         ----------
         data : numpy array
-            The audio data to play. Must be a *frames x channels* Numpy array.
-
+            The audio data to play. Must be a *frames x channels* Numpy
+            array.
         """
 
         data = numpy.array(data, dtype='float32', order='C')
         if data.ndim == 1:
-            data = data[:, None] # force 2d
+            data = data[:, None]  # force 2d
         if data.ndim != 2:
             raise TypeError('data must be 1d or 2d, not {}d'.format(data.ndim))
         if data.shape[1] == 1 and self.channels != 1:
             data = numpy.tile(data, [1, self.channels])
         if data.shape[1] != self.channels:
-            raise TypeError('second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
+            raise TypeError(
+                'second dimension of data must be equal to the number of channels, not {}'.format(data.shape[1]))
         while data.nbytes > 0:
-            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels) # 4 bytes per sample
+            nwrite = _pulse._pa_stream_writable_size(self.stream) // (4 * self.channels)  # 4 bytes per sample
 
             if nwrite == 0:
                 time.sleep(0.001)
@@ -787,39 +847,41 @@ class _Player(_Stream):
             _pulse._pa_stream_write(self.stream, bytes, len(bytes), _ffi.NULL, 0, _pa.PA_SEEK_RELATIVE)
             data = data[nwrite:]
 
+
 class _Recorder(_Stream):
     """A context manager for an active input stream.
 
     Audio recording is available as soon as the context manager is
     entered. Recorded audio data can be read using the :func:`record`
-    method. If no audio data is available, :func:`record` will block until
-    the requested amount of audio data has been recorded.
+    method. If no audio data is available, :func:`record` will block
+    until the requested amount of audio data has been recorded.
 
     This context manager can only be entered once, and can not be used
     after it is closed.
-
     """
 
     def __init__(self, *args, **kwargs):
         super(_Recorder, self).__init__(*args, **kwargs)
-        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
+        self._pending_chunk = numpy.zeros((0,), dtype='float32')
         self._record_event = threading.Event()
 
     def _connect_stream(self, bufattr):
         _pulse._pa_stream_connect_record(self.stream, self._id.encode(), bufattr, _pa.PA_STREAM_ADJUST_LATENCY)
+
         @_ffi.callback("pa_stream_request_cb_t")
         def read_callback(stream, nbytes, userdata):
             self._record_event.set()
+
         self._callback = read_callback
         _pulse._pa_stream_set_read_callback(self.stream, read_callback, _ffi.NULL)
 
     def _record_chunk(self):
-        '''Record one chunk of audio data, as returned by pulseaudio
+        """Record one chunk of audio data, as returned by Pulseaudio
 
-        The data will be returned as a 1D numpy array, which will be used by
-        the `record` method. This function is the interface of the `_Recorder`
-        object with pulseaudio
-        '''
+        The data will be returned as a 1D Numpy array, which will be used
+        by the `record` method. This function is the interface of the
+        `_Recorder` object with Pulseaudio
+        """
         data_ptr = _ffi.new('void**')
         nbytes_ptr = _ffi.new('size_t*')
         readable_bytes = _pulse._pa_stream_readable_size(self.stream)
@@ -836,7 +898,7 @@ class _Recorder(_Stream):
             buffer = _ffi.buffer(data_ptr[0], nbytes_ptr[0])
             chunk = numpy.frombuffer(buffer, dtype='float32').copy()
         if data_ptr[0] == _ffi.NULL and nbytes_ptr[0] != 0:
-            chunk = numpy.zeros(nbytes_ptr[0]//4, dtype='float32')
+            chunk = numpy.zeros(nbytes_ptr[0] // 4, dtype='float32')
         if nbytes_ptr[0] > 0:
             _pulse._pa_stream_drop(self.stream)
             return chunk
@@ -845,7 +907,7 @@ class _Recorder(_Stream):
         """Record a block of audio data.
 
         The data will be returned as a *frames × channels* float32
-        numpy array. This function will wait until ``numframes``
+        Numpy array. This function will wait until ``numframes``
         frames have been recorded. If numframes is given, it will
         return exactly ``numframes`` frames, and buffer the rest for
         later.
@@ -869,8 +931,8 @@ class _Recorder(_Stream):
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
-
+            The recorded audio data. Will be a *frames x channels* Numpy
+            array.
         """
         if numframes is None:
             return numpy.reshape(numpy.concatenate([self.flush().ravel(), self._record_chunk()]),
@@ -886,7 +948,7 @@ class _Recorder(_Stream):
                 while captured_frames < numframes:
                     chunk = self._record_chunk()
                     captured_data.append(chunk)
-                    captured_frames += len(chunk)/self.channels
+                    captured_frames += len(chunk) / self.channels
                 to_split = int(len(chunk) - (captured_frames - numframes) * self.channels)
                 captured_data[-1], self._pending_chunk = numpy.split(captured_data[-1], [to_split])
                 return numpy.reshape(numpy.concatenate(captured_data), [-1, self.channels])
@@ -900,9 +962,9 @@ class _Recorder(_Stream):
         Returns
         -------
         data : numpy array
-            The recorded audio data. Will be a *frames x channels* Numpy array.
-
+            The recorded audio data. Will be a *frames x channels*
+            Numpy array.
         """
         last_chunk = numpy.reshape(self._pending_chunk, [-1, self.channels])
-        self._pending_chunk = numpy.zeros((0, ), dtype='float32')
+        self._pending_chunk = numpy.zeros((0,), dtype='float32')
         return last_chunk
