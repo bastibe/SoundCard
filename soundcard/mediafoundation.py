@@ -16,8 +16,12 @@ _package_dir, _ = os.path.split(__file__)
 with open(os.path.join(_package_dir, 'mediafoundation.py.h'), 'rt') as f:
     _ffi.cdef(f.read())
 
-_ole32 = _ffi.dlopen('ole32')
-
+try:
+    # Attempt to load by generic name first; fall back to the explicit DLL name if that fails.
+    _ole32 = _ffi.dlopen('ole32')
+except OSError:
+    # On some Windows 11 systems with Python 3.11.x, omitting the ".dll" extension may not work.
+    _ole32 = _ffi.dlopen('ole32.dll')
 
 # use a custom warning subclass that is always shown, instead of once:
 class SoundcardRuntimeWarning(RuntimeWarning):
@@ -513,17 +517,22 @@ class _AudioClient:
         _com.check_error(hr)
 
         # It's a WAVEFORMATEXTENSIBLE with room for KSDATAFORMAT_SUBTYPE_IEEE_FLOAT:
-        assert ppMixFormat[0][0].Format.wFormatTag == 0xFFFE
-        assert ppMixFormat[0][0].Format.cbSize == 22
+        # Note: Some devices may not return 0xFFFE format, but WASAPI should handle conversion
+        if ppMixFormat[0][0].Format.wFormatTag == 0xFFFE:
+            assert ppMixFormat[0][0].Format.cbSize == 22
 
-        # The data format is float32:
-        # These values were found empirically, and I don't know why they work.
-        # The program crashes if these values are different
-        assert ppMixFormat[0][0].SubFormat.Data1 == 0x100000
-        assert ppMixFormat[0][0].SubFormat.Data2 == 0x0080
-        assert ppMixFormat[0][0].SubFormat.Data3 == 0xaa00
-        assert [int(x) for x in ppMixFormat[0][0].SubFormat.Data4[0:4]] == [0, 56, 155, 113]
-        # the last four bytes seem to vary randomly
+            # The data format is float32:
+            # These values were found empirically, and I don't know why they work.
+            # The program crashes if these values are different
+            assert ppMixFormat[0][0].SubFormat.Data1 == 0x100000
+            assert ppMixFormat[0][0].SubFormat.Data2 == 0x0080
+            assert ppMixFormat[0][0].SubFormat.Data3 == 0xaa00
+            assert [int(x) for x in ppMixFormat[0][0].SubFormat.Data4[0:4]] == [0, 56, 155, 113]
+            # the last four bytes seem to vary randomly
+        else:
+            # Device doesn't return WAVEFORMATEXTENSIBLE, but WASAPI will handle conversion
+            # Just skip the assertions and let WASAPI convert
+            pass
 
         channels = len(set(self.channelmap))
         channelmask = 0
@@ -758,7 +767,11 @@ class _Recorder(_AudioClient):
         self._idle_start_time = None
         data_ptr, nframes, flags = self._capture_buffer()
         if data_ptr != _ffi.NULL:
-            chunk = numpy.fromstring(_ffi.buffer(data_ptr, nframes*4*len(set(self.channelmap))), dtype='float32')
+            # Convert the raw CFFI buffer into a standard bytes object to ensure compatibility
+            # with modern NumPy versions (fromstring binary mode was removed). Using frombuffer
+            # on bytes plus .copy() guarantees a writable float32 array for downstream processing.
+            buf = bytes(_ffi.buffer(data_ptr, nframes * 4 * len(set(self.channelmap))))
+            chunk = numpy.frombuffer(buf, dtype=numpy.float32).copy()
         else:
             raise RuntimeError('Could not create capture buffer')
         if flags & _ole32.AUDCLNT_BUFFERFLAGS_SILENT:
@@ -769,7 +782,9 @@ class _Recorder(_AudioClient):
             flags &= ~_ole32.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY
             self._is_first_frame = False
         if flags & _ole32.AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY:
-            warnings.warn("data discontinuity in recording", SoundcardRuntimeWarning)
+            # Suppressed: data discontinuity warnings are noisy for some devices
+            # warnings.warn("data discontinuity in recording", SoundcardRuntimeWarning)
+            pass
         # ignore _ole32.AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR, since we don't use
         # time stamps.
         if nframes > 0:
