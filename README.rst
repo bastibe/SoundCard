@@ -10,13 +10,13 @@ CPython extension. Instead, it is implemented using the wonderful `CFFI
 <http://cffi.readthedocs.io/en/latest/>`__ and the native audio libraries of
 Linux, Windows and macOS.
 
-The input and output data are scaled to 0dBFS (Full Scale). To avoid clipping  
+The input and output data are scaled to 0dBFS (Full Scale). To avoid clipping
 restrict all data between -1 and 1.
 
 SoundCard is cross-platform, and supports Linux/pulseaudio, Mac/coreaudio, and
 Windows/WASAPI. While the programming interface is identical across platforms,
 sound card naming schemes and default block sizes can vary between devices and
-platforms. 
+platforms.
 
 SoundCard is still in development. All major features work on all platforms, but
 there are a few known issues that still need to be fixed. If you find a bug,
@@ -219,7 +219,7 @@ The available channels of each PulseAudio source or sink can be listed by ::
 The ``Channel Map`` property lists the channel identifier of the source/sink. ::
 
     > pactl list sinks | grep  "Channel Map" -B 6
-    
+
     Sink #486
         State: SUSPENDED
         Name: alsa_output.usb-C-Media_Electronics_Inc._USB_Advanced_Audio_Device-00.analog-stereo
@@ -319,3 +319,5 @@ Changelog
   (Thank you, coexe and TnTora!)
 - 2025-09-15 fixes compatibility with latest Numpy
   (Thank you, Jer Miller!)
+- 2026-01-10 fixes compatibility with latest Numpy
+  (Thank you, stvol)
