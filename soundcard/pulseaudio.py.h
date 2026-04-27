@@ -415,5 +415,9 @@ pa_stream_state_t pa_stream_get_state(pa_stream *p);
 
 typedef void(*pa_stream_request_cb_t)(pa_stream *p, size_t nbytes, void *userdata);
 void pa_stream_set_read_callback(pa_stream *p, pa_stream_request_cb_t cb, void *userdata);
+typedef void (*pa_stream_notify_cb_t)(pa_stream *p, void *userdata);
+void pa_stream_set_overflow_callback(pa_stream *p, pa_stream_notify_cb_t cb, void *userdata);
+void pa_stream_set_underflow_callback(pa_stream *p, pa_stream_notify_cb_t cb, void *userdata);
+int64_t pa_stream_get_underflow_index(const pa_stream *p);
 
 pa_operation* pa_stream_update_timing_info(pa_stream *s, pa_stream_success_cb_t cb, void *userdata);
