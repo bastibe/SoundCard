@@ -24,8 +24,8 @@ please open an Issue, and I will try to fix it. Or open a Pull Request, and I
 will try to include your fix into SoundCard.
 
 However, please be aware that this is a hobby project of mine that I am
-developing for free, and in my spare time. While I try to be as accomodating as
-possible, I can not guarantee a timely response to issues. Publishing Open
+developing for free, and in my spare time. While I try to be as accommodating
+as possible, I can not guarantee a timely response to issues. Publishing Open
 Source Software on Github does not imply an obligation to *fix your problem
 right now*. Please be civil.
 

@@ -72,7 +72,7 @@ def channel_name_map():
 
 
 class _PulseAudio:
-    """Proxy for communcation with Pulseaudio.
+    """Proxy for communication with Pulseaudio.
 
     This holds the pulseaudio main loop, and a pulseaudio context.
     Together, these provide the building blocks for interacting with
@@ -102,7 +102,7 @@ class _PulseAudio:
 
     @staticmethod
     def _infer_program_name():
-        """Get current progam name.
+        """Get current program name.
 
         Will handle `./script.py`, `python path/to/script.py`,
         `python -m module.submodule` and `python -c 'code(x=y)'`.

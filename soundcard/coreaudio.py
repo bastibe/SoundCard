@@ -393,7 +393,7 @@ class _AudioUnit:
     """Communication helper with AudioUnits.
 
     This provides an abstraction over a single AudioUnit. Can be used
-    as soon as it instatiated.
+    as soon as it instantiated.
 
     Properties:
     - `enableinput`, `enableoutput`: set up the AudioUnit for playback
