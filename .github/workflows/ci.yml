@@ -1,0 +1,47 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  pytest:
+    strategy:
+      fail-fast: false  # https://github.com/actions/runner-images#available-images
+      matrix:  # https://github.com/actions/python-versions/releases
+        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-latest, macos-26-intel, windows-latest]
+        # python-version: ["3.10", "3.12", "3.14", "3.14t", "3.15", "pypy-3.11"]
+        python-version: [3.x]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install --yes pulseaudio
+          pulseaudio --version
+          pulseaudio --start
+          pacmd load-module module-null-sink channels=6 rate=48000
+          pactl info
+      - if: runner.os == 'macOS'
+        run: |
+          brew install pulseaudio
+          pulseaudio --version
+      - if: runner.os == 'Windows'
+        uses: AlekseyMartynov/action-vbcable-win@main
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: pip install --upgrade pip
+      - run: pip install pyinstaller pytest
+      - run: pip install --editable .
+      - shell: python  # Sanity check
+        run: |
+          import soundcard
+          print(f"{soundcard.all_speakers() = }")
+          if soundcard.all_speakers():
+              print(f"{soundcard.default_speaker() = }")
+          print(f"{soundcard.all_microphones(include_loopback=True) = }")
+          if soundcard.all_microphones(include_loopback=True):
+              print(f"{soundcard.default_microphone() = }")
+      - run: pytest
