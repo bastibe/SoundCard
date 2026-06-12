@@ -7,6 +7,7 @@ import re
 import math
 import threading
 import warnings
+import platform
 
 _ffi = cffi.FFI()
 _package_dir, _ = os.path.split(__file__)
@@ -15,8 +16,22 @@ with open(os.path.join(_package_dir, 'coreaudio.py.h'), 'rt') as f:
 
 _ca = _ffi.dlopen('CoreAudio')
 _au = _ffi.dlopen('AudioUnit')
+_objc = _ffi.dlopen('objc')
 
 from soundcard import coreaudioconstants as _cac
+
+
+mac_ver = platform.mac_ver()[0]
+loopback_support = True
+
+try:
+    for mac_v, min_v in zip(mac_ver.split("."), (14, 2), strict=False):
+        if int(mac_v) == min_v:
+            continue
+        loopback_support = int(mac_v) > min_v
+        break
+except ValueError:
+    loopback_support = False
 
 
 def all_speakers():
@@ -32,16 +47,23 @@ def all_speakers():
 def all_microphones(include_loopback=False):
     """A list of all connected microphones."""
 
-    # macOS does not support loopback recording functionality
-    if include_loopback:
-        warnings.warn("macOS does not support loopback recording functionality", Warning)
-
     device_ids = _CoreAudio.get_property(
         _cac.kAudioObjectSystemObject,
         _cac.kAudioHardwarePropertyDevices,
         "AudioObjectID")
-    return [_Microphone(id=d) for d in device_ids
+
+    mics = [_Microphone(id=d) for d in device_ids
             if _Microphone(id=d).channels > 0]
+
+    if not include_loopback:
+        return [mic for mic in mics if not mic.isloopback]
+    if not loopback_support:
+        warnings.warn("macOS version {} does not support loopback recording functionality".format(mac_ver), Warning)
+        return mics
+    if not _CoreAudio.loopback_devices:
+        _CoreAudio.create_loopback_device()
+        mics += [_Microphone(id=aggr_id) for aggr_id in _CoreAudio.loopback_devices]
+    return mics
 
 
 def default_speaker():
@@ -194,7 +216,7 @@ class _Microphone(_Soundcard):
 
     @property
     def isloopback(self):
-        return False
+        return self._id in _CoreAudio.loopback_devices
 
     @property
     def channels(self):
@@ -208,7 +230,10 @@ class _Microphone(_Soundcard):
             return 0
 
     def __repr__(self):
-        return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
+        if self.isloopback:
+            return '<Loopback {} ({} channels)>'.format(self.name, self.channels)
+        else:
+            return '<Microphone {} ({} channels)>'.format(self.name, self.channels)
 
     def recorder(self, samplerate, channels=None, blocksize=None):
         if channels is None:
@@ -297,6 +322,97 @@ class _CoreAudio:
         assert err == 1, "Could not decode string"
 
         return _ffi.string(str_buffer).decode()
+
+    @staticmethod
+    def str_to_CFString(python_string):
+        """Converts a Python str to a CFStringRef."""
+        cstring = _ffi.new("char[]", bytes(python_string, "utf-8"))
+        cfstring = _ca.CFStringCreateWithCString(_ffi.NULL, cstring, 0)
+        return cfstring
+
+    # CoreAudio Taps references:
+    # https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps?language=objc
+    # https://gist.github.com/directmusic/7d653806c24fe5bb8166d12a9f4422de
+    # Using objective c classes with objc framework: https://stackoverflow.com/a/1490644
+
+    loopback_devices = {}
+
+    # CoreAudio/AudioHardware.h
+    kAudioSubTapUIDKey = str_to_CFString("uid")
+    kAudioSubTapDriftCompensationKey = str_to_CFString("drift")
+    kAudioAggregateDeviceNameKey = str_to_CFString("name")
+    kAudioAggregateDeviceUIDKey = str_to_CFString("uid")
+    kAudioAggregateDeviceTapListKey = str_to_CFString("taps")
+    kAudioAggregateDeviceTapAutoStartKey = str_to_CFString("tapautostart")
+    kAudioAggregateDeviceIsPrivateKey = str_to_CFString("private")
+    kAudioAggregateDevicePropertyTapList = int.from_bytes(b"tap#", byteorder="big")
+
+    @classmethod
+    def create_loopback_device(cls):
+        # Should avoid leaking memory when using objc
+        NSAutoreleasePool = _objc.objc_getClass(b"NSAutoreleasePool")
+        pool = _objc.objc_msgSend(NSAutoreleasePool, _objc.sel_registerName(b"alloc"))
+        pool = _objc.objc_msgSend(pool, _objc.sel_registerName(b"init"))
+
+        # Initialize variables equivalent to obj-c @YES ans @NO
+        NSNumber = _objc.objc_getClass(b"NSNumber")
+        YES = _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithBool:"), _ffi.cast("bool", True))
+        NO = _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithBool:"), _ffi.cast("bool", False))
+
+        # Initialize array that contains processes that should not be
+        # captured. Leaving it empty will capture all system audio.
+        NSArray = _objc.objc_getClass(b"NSArray")
+        processes = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
+        processes = _objc.objc_msgSend(processes, _objc.sel_registerName(b"init"))
+
+        CATapDescription = _objc.objc_getClass(b"CATapDescription")
+        tap_desc = _objc.objc_msgSend(CATapDescription, _objc.sel_registerName(b"alloc"))
+        tap_desc = _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"initStereoGlobalTapButExcludeProcesses:"), processes)
+        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setMuteBehavior:"), _ffi.cast("int", 0))
+        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("GlobalTap"))
+        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setPrivate:"), _ffi.cast("bool", True))
+        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", True))
+
+        tap_id = _ffi.new("UInt32*")
+        status = _ca.AudioHardwareCreateProcessTap(tap_desc, tap_id)
+
+        assert status == 0, "AudioHardwareCreateProcessTap failed with status: {}".format(status)
+
+        tap_uid = _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"UUID"))
+        tap_uid_string = _objc.objc_msgSend(tap_uid, _objc.sel_registerName(b"UUIDString"))
+
+        tap_dict = _ca.CFDictionaryCreateMutable(_ffi.NULL, 0, _ffi.NULL, _ffi.NULL)
+        _ca.CFDictionaryAddValue(tap_dict, cls.kAudioSubTapUIDKey, tap_uid_string)
+        _ca.CFDictionaryAddValue(tap_dict, cls.kAudioSubTapDriftCompensationKey, YES)
+
+        taps = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
+        taps = _objc.objc_msgSend(taps, _objc.sel_registerName(b"initWithObjects:"), tap_dict, _ffi.NULL)
+
+        aggregate_device_dict = _ca.CFDictionaryCreateMutable(_ffi.NULL, 0, _ffi.NULL, _ffi.NULL)
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceNameKey, cls.str_to_CFString("SystemAudioRecorder"))
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceUIDKey, cls.str_to_CFString("com.user.SystemAudioRecorder"))
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapListKey, taps)
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapAutoStartKey, NO)
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceIsPrivateKey, YES)
+
+        aggr_id = _ffi.new("UInt32*")
+        status = _ca.AudioHardwareCreateAggregateDevice(aggregate_device_dict, aggr_id)
+
+        _objc.objc_msgSend(NSAutoreleasePool, _objc.sel_registerName(b"release"))
+
+        if status == 0:
+            cls.loopback_devices[aggr_id[0]] = tap_id[0]
+            return
+        print(f"'AudioHardwareCreateAggregateDevice' Error Status: {status}")
+        _ca.AudioHardwareDestroyProcessTap(tap_id[0])
+
+    @classmethod
+    def destroy_loopback_device(cls, aggr_id):
+        if aggr_id not in cls.loopback_devices:
+            return
+        _ca.AudioHardwareDestroyAggregateDevice(aggr_id)
+        _ca.AudioHardwareDestroyProcessTap(cls.loopback_devices[aggr_id])
+        cls.loopback_devices.pop(aggr_id)
 
 
 class _Player:
