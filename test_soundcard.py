@@ -1,9 +1,13 @@
+import os
 import sys
-import soundcard
+
 import numpy
 import pytest
 
+import soundcard
+
 skip_if_not_linux = pytest.mark.skipif(sys.platform != 'linux', reason='Only implemented for PulseAudio so far')
+xfail_if_ci = pytest.mark.xfail(os.getenv('CI') == 'true', reason='Testing on GitHub Actions continuos integration')
 
 ones = numpy.ones(1024)
 signal = numpy.concatenate([[ones], [-ones]]).T
@@ -30,7 +34,7 @@ def test_default_record():
     assert len(recording == 1024)
 
 def test_default_blockless_record():
-    recording = soundcard.default_microphone().record(None, 44100)
+    _recording = soundcard.default_microphone().record(None, 44100)
 
 @skip_if_not_linux
 def test_name():
@@ -61,7 +65,7 @@ def loopback_speaker():
         # must install https://www.vb-audio.com/Cable/index.htm
         return soundcard.get_speaker('Cable')
     elif sys.platform == 'darwin':
-        # must install soundflower
+        # soundflower is EoL and does not support modern macOS or Apple Silicon
         return soundcard.get_speaker('Soundflower64')
     elif sys.platform == 'linux':
         # pacmd load-module module-null-sink channels=6 rate=48000
@@ -80,7 +84,7 @@ def loopback_microphone():
         # must install https://www.vb-audio.com/Cable/index.htm
         return soundcard.get_microphone('Cable')
     elif sys.platform == 'darwin':
-        # must install soundflower
+        # soundflower is EoL and does not support modern macOS or Apple Silicon
         return soundcard.get_microphone('Soundflower64')
     elif sys.platform == 'linux':
         return soundcard.get_microphone('Null', include_loopback=True)
@@ -92,6 +96,9 @@ def loopback_recorder(loopback_microphone):
     with loopback_microphone.recorder(48000, channels=2, blocksize=512) as recorder:
         yield recorder
 
+# TODO: Get the following 6 loopback test to work on headless CI machines
+# See: pull request #200
+@xfail_if_ci
 def test_loopback_playback(loopback_player, loopback_recorder):
     loopback_player.play(signal)
     recording = loopback_recorder.record(1024*10)
@@ -102,6 +109,7 @@ def test_loopback_playback(loopback_player, loopback_recorder):
     assert (left > 0.5).sum() == len(signal)
     assert (right < -0.5).sum() == len(signal)
 
+@xfail_if_ci
 def test_loopback_reverse_recorder_channelmap(loopback_player, loopback_microphone):
     with loopback_microphone.recorder(48000, channels=[1, 0], blocksize=512) as loopback_recorder:
         loopback_player.play(signal)
@@ -113,6 +121,7 @@ def test_loopback_reverse_recorder_channelmap(loopback_player, loopback_micropho
     assert (right > 0.5).sum() == len(signal)
     assert (left < -0.5).sum() == len(signal)
 
+@xfail_if_ci
 def test_loopback_reverse_player_channelmap(loopback_speaker, loopback_recorder):
     with loopback_speaker.player(48000, channels=[1, 0], blocksize=512) as loopback_player:
         loopback_player.play(signal)
@@ -124,6 +133,7 @@ def test_loopback_reverse_player_channelmap(loopback_speaker, loopback_recorder)
     assert (right > 0.5).sum() == len(signal)
     assert (left < -0.5).sum() == len(signal)
 
+@xfail_if_ci
 def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
     with loopback_speaker.player(48000, channels=[0], blocksize=512) as loopback_player:
         loopback_player.play(signal[:,0])
@@ -138,6 +148,7 @@ def test_loopback_mono_player_channelmap(loopback_speaker, loopback_recorder):
         assert abs(right.mean()) < 0.01 # something like zero
     assert (left > 0.5).sum() == len(signal)
 
+@xfail_if_ci
 def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone):
     with loopback_microphone.recorder(48000, channels=[0], blocksize=512) as loopback_recorder:
         loopback_player.play(signal)
@@ -146,6 +157,7 @@ def test_loopback_mono_recorder_channelmap(loopback_player, loopback_microphone)
     assert recording.mean() > 0
     assert (recording > 0.5).sum() == len(signal)
 
+@xfail_if_ci
 def test_loopback_multichannel_channelmap(loopback_speaker, loopback_microphone):
     with loopback_speaker.player(48000, channels=[2, 0], blocksize=512) as loopback_player:
         with loopback_microphone.recorder(48000, channels=[2, 0], blocksize=512) as loopback_recorder:
