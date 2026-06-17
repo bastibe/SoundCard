@@ -32,11 +32,63 @@ typedef UInt16                  UTF16Char;
 typedef UInt8                   UTF8Char;
 typedef signed long long CFIndex;
 typedef const void * CFStringRef;
+typedef unsigned long long      CFHashCode;
+typedef const void *            CFAllocatorRef;
 
 // CoreFoundation/CFString.h
 typedef UInt32 CFStringEncoding;
 CFIndex CFStringGetLength(CFStringRef theString);
 Boolean CFStringGetCString(CFStringRef theString, char *buffer, CFIndex bufferSize, CFStringEncoding encoding);
+extern CFStringRef CFStringCreateWithCString(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding);
+
+// CoreFoundation/CFDictionary.h
+typedef const void *            CFDictionaryRef;
+typedef const void *            CFMutableDictionaryRef;
+typedef const void *	        (*CFDictionaryRetainCallBack)(CFAllocatorRef allocator, const void *value);
+typedef void		            (*CFDictionaryReleaseCallBack)(CFAllocatorRef allocator, const void *value);
+typedef CFStringRef	            (*CFDictionaryCopyDescriptionCallBack)(const void *value);
+typedef Boolean		            (*CFDictionaryEqualCallBack)(const void *value1, const void *value2);
+typedef CFHashCode	            (*CFDictionaryHashCallBack)(const void *value);
+
+typedef struct {
+    CFIndex				version;
+    CFDictionaryRetainCallBack		retain;
+    CFDictionaryReleaseCallBack		release;
+    CFDictionaryCopyDescriptionCallBack	copyDescription;
+    CFDictionaryEqualCallBack		equal;
+    CFDictionaryHashCallBack		hash;
+} CFDictionaryKeyCallBacks;
+
+typedef struct {
+    CFIndex				version;
+    CFDictionaryRetainCallBack		retain;
+    CFDictionaryReleaseCallBack		release;
+    CFDictionaryCopyDescriptionCallBack	copyDescription;
+    CFDictionaryEqualCallBack		equal;
+} CFDictionaryValueCallBacks;
+
+extern CFMutableDictionaryRef CFDictionaryCreateMutable(
+        CFAllocatorRef allocator,
+        CFIndex capacity,
+        const CFDictionaryKeyCallBacks *keyCallBacks,
+        const CFDictionaryValueCallBacks *valueCallBacks);
+extern void CFDictionaryAddValue(
+        CFMutableDictionaryRef theDict,
+        const void *key,
+        const void *value);
+
+
+// objc/objc.h
+typedef struct objc_object *id;
+typedef struct objc_selector *SEL;
+extern SEL sel_registerName(const char *str);
+
+// objc/message.h
+extern id objc_msgSend(id self, SEL op, ...);
+
+// objc/runtime.h
+extern id objc_getClass(const char *name);
+
 
 // CoreFoundation/CFRunLoop.h
 typedef struct __CFRunLoop * CFRunLoopRef;
@@ -73,6 +125,16 @@ OSStatus AudioObjectSetPropertyData(AudioObjectID inObjectID,
                                     const void* inQualifierData,
                                     UInt32 inDataSize,
                                     const void* inData);
+
+extern OSStatus AudioHardwareCreateAggregateDevice(CFDictionaryRef inDescription,
+                                                   AudioObjectID  *outDeviceID);
+extern OSStatus AudioHardwareDestroyAggregateDevice(AudioObjectID inDeviceID);
+
+
+// CoreAudio/AudioHardwareTapping.h
+extern OSStatus AudioHardwareCreateProcessTap(id inDescription,
+                                              AudioObjectID *outTapID);
+extern OSStatus AudioHardwareDestroyProcessTap(AudioObjectID inTapID);
 
 
 // CoreAudioTypes.h
